@@ -1,9 +1,16 @@
+using Microsoft.EntityFrameworkCore;
+using SistemaIncidentes.Api.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Servicios base de la API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Conexión a PostgreSQL con Entity Framework Core
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
@@ -17,10 +24,10 @@ if (app.Environment.IsDevelopment())
 // Ruta inicial de verificación
 app.MapGet("/", () => new
 {
-    mensaje = "API del Sistema Web de Gestión de Incidentes Tecnológicos funcionando correctamente",
-    estado = "Activo",
+    nombre = "Sistema Web de Gestión de Incidentes Tecnológicos",
+    estado = "API activa",
     version = "1.0.0",
-    enfoque = "Seguridad, buenas prácticas, trazabilidad e ITIL"
+    entorno = app.Environment.EnvironmentName
 });
 
 // Middleware base
