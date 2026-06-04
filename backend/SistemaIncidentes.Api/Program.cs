@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SistemaIncidentes.Api.Data;
+using SistemaIncidentes.Api.Seeders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -87,6 +88,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await DataSeeder.SeedAsync(context);
+}
 
 // Swagger solo en ambiente de desarrollo
 if (app.Environment.IsDevelopment())
