@@ -165,31 +165,7 @@ namespace SistemaIncidentes.Api.Controllers
             _context.Tickets.Add(ticket);
             await _context.SaveChangesAsync();
 
-            var ticketCreado = await _context.Tickets
-                .Include(t => t.UsuarioSolicitante)
-                .Include(t => t.TecnicoAsignado)
-                .Include(t => t.Categoria)
-                .Include(t => t.EstadoTicket)
-                .Include(t => t.Prioridad)
-                .Where(t => t.Id == ticket.Id)
-                .Select(t => new TicketResponseDto
-                {
-                    Id = t.Id,
-                    Titulo = t.Titulo,
-                    Descripcion = t.Descripcion,
-                    Impacto = t.Impacto,
-                    Urgencia = t.Urgencia,
-                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
-                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
-                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
-                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
-                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
-                    FechaCreacion = t.FechaCreacion,
-                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
-                    FechaResolucion = t.FechaResolucion,
-                    FechaCierre = t.FechaCierre
-                })
-                .FirstAsync();
+            var ticketCreado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
             return CreatedAtAction(nameof(ObtenerTicketPorId), new { id = ticket.Id }, ticketCreado);
         }
@@ -259,6 +235,115 @@ namespace SistemaIncidentes.Api.Controllers
             }
 
             return Ok(ticket);
+        }
+
+        [HttpPut("{id:int}/asignar")]
+        public async Task<IActionResult> AsignarTicket(int id, [FromBody] AsignarTicketDto dto)
+        {
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (rolUsuario != "Administrador" && rolUsuario != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            var tecnico = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == dto.TecnicoId && u.Activo);
+
+            if (tecnico == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El técnico seleccionado no existe o se encuentra inactivo."
+                });
+            }
+
+            if (tecnico.Rol == null || tecnico.Rol.Nombre != "Técnico")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El usuario seleccionado no tiene rol de Técnico."
+                });
+            }
+
+            var estadoEnProceso = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "En proceso" && e.Activo);
+
+            if (estadoEnProceso == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "No se encontró el estado 'En proceso'. Verifique los datos base del sistema."
+                });
+            }
+
+            ticket.TecnicoAsignadoId = tecnico.Id;
+            ticket.EstadoTicketId = estadoEnProceso.Id;
+
+            if (ticket.FechaPrimeraRespuesta == null)
+            {
+                ticket.FechaPrimeraRespuesta = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket asignado correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
+        private async Task<TicketResponseDto> ObtenerTicketResponsePorIdAsync(int ticketId)
+        {
+            return await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
+                .Include(t => t.Categoria)
+                .Include(t => t.EstadoTicket)
+                .Include(t => t.Prioridad)
+                .Where(t => t.Id == ticketId)
+                .Select(t => new TicketResponseDto
+                {
+                    Id = t.Id,
+                    Titulo = t.Titulo,
+                    Descripcion = t.Descripcion,
+                    Impacto = t.Impacto,
+                    Urgencia = t.Urgencia,
+                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
+                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
+                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
+                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
+                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
+                    FechaCreacion = t.FechaCreacion,
+                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
+                    FechaResolucion = t.FechaResolucion,
+                    FechaCierre = t.FechaCierre
+                })
+                .FirstAsync();
         }
 
         private async Task<Prioridad?> ObtenerPrioridadAsync(string impacto, string urgencia)
