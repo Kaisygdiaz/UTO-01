@@ -20,6 +20,65 @@ namespace SistemaIncidentes.Api.Controllers
             _context = context;
         }
 
+        [HttpGet]
+        public async Task<IActionResult> ListarTickets()
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            var query = _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
+                .Include(t => t.Categoria)
+                .Include(t => t.EstadoTicket)
+                .Include(t => t.Prioridad)
+                .AsQueryable();
+
+            if (rolUsuario == "Solicitante")
+            {
+                query = query.Where(t => t.UsuarioSolicitanteId == usuarioId);
+            }
+            else if (rolUsuario == "Técnico")
+            {
+                query = query.Where(t => t.TecnicoAsignadoId == usuarioId);
+            }
+            else if (rolUsuario != "Administrador" && rolUsuario != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            var tickets = await query
+                .OrderByDescending(t => t.FechaCreacion)
+                .Select(t => new TicketResponseDto
+                {
+                    Id = t.Id,
+                    Titulo = t.Titulo,
+                    Descripcion = t.Descripcion,
+                    Impacto = t.Impacto,
+                    Urgencia = t.Urgencia,
+                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
+                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
+                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
+                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
+                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
+                    FechaCreacion = t.FechaCreacion,
+                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
+                    FechaResolucion = t.FechaResolucion,
+                    FechaCierre = t.FechaCierre
+                })
+                .ToListAsync();
+
+            return Ok(tickets);
+        }
+
         [HttpPost]
         public async Task<IActionResult> CrearTicket([FromBody] CrearTicketDto dto)
         {
@@ -138,13 +197,40 @@ namespace SistemaIncidentes.Api.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> ObtenerTicketPorId(int id)
         {
-            var ticket = await _context.Tickets
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            var query = _context.Tickets
                 .Include(t => t.UsuarioSolicitante)
                 .Include(t => t.TecnicoAsignado)
                 .Include(t => t.Categoria)
                 .Include(t => t.EstadoTicket)
                 .Include(t => t.Prioridad)
                 .Where(t => t.Id == id)
+                .AsQueryable();
+
+            if (rolUsuario == "Solicitante")
+            {
+                query = query.Where(t => t.UsuarioSolicitanteId == usuarioId);
+            }
+            else if (rolUsuario == "Técnico")
+            {
+                query = query.Where(t => t.TecnicoAsignadoId == usuarioId);
+            }
+            else if (rolUsuario != "Administrador" && rolUsuario != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            var ticket = await query
                 .Select(t => new TicketResponseDto
                 {
                     Id = t.Id,
@@ -168,7 +254,7 @@ namespace SistemaIncidentes.Api.Controllers
             {
                 return NotFound(new
                 {
-                    mensaje = "Ticket no encontrado."
+                    mensaje = "Ticket no encontrado o no tiene permisos para consultarlo."
                 });
             }
 
