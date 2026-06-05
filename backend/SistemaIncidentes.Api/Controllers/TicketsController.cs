@@ -62,6 +62,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Id = t.Id,
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
+                    Solucion = t.Solucion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -212,6 +213,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Id = t.Id,
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
+                    Solucion = t.Solucion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -317,6 +319,84 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/resolver")]
+        public async Task<IActionResult> ResolverTicket(int id, [FromBody] ResolverTicketDto dto)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
+            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
+
+            if (!esTecnicoAsignado && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket == null ||
+                (ticket.EstadoTicket.Nombre != "En proceso" && ticket.EstadoTicket.Nombre != "Escalado"))
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Solo se pueden resolver tickets que estén en estado 'En proceso' o 'Escalado'."
+                });
+            }
+
+            var estadoResuelto = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "Resuelto" && e.Activo);
+
+            if (estadoResuelto == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "No se encontró el estado 'Resuelto'. Verifique los datos base del sistema."
+                });
+            }
+
+            ticket.Solucion = dto.Solucion.Trim();
+            ticket.EstadoTicketId = estadoResuelto.Id;
+            ticket.FechaResolucion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket marcado como resuelto correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
         private async Task<TicketResponseDto> ObtenerTicketResponsePorIdAsync(int ticketId)
         {
             return await _context.Tickets
@@ -331,6 +411,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Id = t.Id,
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
+                    Solucion = t.Solucion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,

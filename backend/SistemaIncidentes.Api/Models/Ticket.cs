@@ -14,6 +14,9 @@ namespace SistemaIncidentes.Api.Models
         [MaxLength(1000)]
         public string Descripcion { get; set; } = string.Empty;
 
+        [MaxLength(1000)]
+        public string? Solucion { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Impacto { get; set; } = string.Empty;

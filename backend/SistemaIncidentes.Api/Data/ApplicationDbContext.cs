@@ -210,6 +210,10 @@ namespace SistemaIncidentes.Api.Data
                     .HasColumnName("descripcion")
                     .HasMaxLength(1000)
                     .IsRequired();
+                
+                entity.Property(t => t.Solucion)
+                    .HasColumnName("solucion")
+                    .HasMaxLength(1000);
 
                 entity.Property(t => t.Impacto)
                     .HasColumnName("impacto")
