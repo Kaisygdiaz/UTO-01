@@ -7,7 +7,12 @@ namespace SistemaIncidentes.Api.DTOs
         public string Titulo { get; set; } = string.Empty;
 
         public string Descripcion { get; set; } = string.Empty;
+
         public string? Solucion { get; set; }
+
+        public string? ComentarioCierre { get; set; }
+
+        public int? CalificacionSatisfaccion { get; set; }
 
         public string Impacto { get; set; } = string.Empty;
 

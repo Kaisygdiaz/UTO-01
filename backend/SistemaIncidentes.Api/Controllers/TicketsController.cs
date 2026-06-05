@@ -63,6 +63,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
                     Solucion = t.Solucion,
+                    ComentarioCierre = t.ComentarioCierre,
+                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -214,6 +216,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
                     Solucion = t.Solucion,
+                    ComentarioCierre = t.ComentarioCierre,
+                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -397,6 +401,86 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/cerrar")]
+        public async Task<IActionResult> CerrarTicket(int id, [FromBody] CerrarTicketDto dto)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
+            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
+
+            if (!esSolicitanteDuenio && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket == null || ticket.EstadoTicket.Nombre != "Resuelto")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Solo se pueden cerrar tickets que estén en estado 'Resuelto'."
+                });
+            }
+
+            var estadoCerrado = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "Cerrado" && e.Activo);
+
+            if (estadoCerrado == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "No se encontró el estado 'Cerrado'. Verifique los datos base del sistema."
+                });
+            }
+
+            ticket.EstadoTicketId = estadoCerrado.Id;
+            ticket.FechaCierre = DateTime.UtcNow;
+            ticket.ComentarioCierre = string.IsNullOrWhiteSpace(dto.ComentarioCierre)
+                ? null
+                : dto.ComentarioCierre.Trim();
+            ticket.CalificacionSatisfaccion = dto.CalificacionSatisfaccion;
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket cerrado correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
         private async Task<TicketResponseDto> ObtenerTicketResponsePorIdAsync(int ticketId)
         {
             return await _context.Tickets
@@ -412,6 +496,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Titulo = t.Titulo,
                     Descripcion = t.Descripcion,
                     Solucion = t.Solucion,
+                    ComentarioCierre = t.ComentarioCierre,
+                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,

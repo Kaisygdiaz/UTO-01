@@ -214,6 +214,13 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(t => t.Solucion)
                     .HasColumnName("solucion")
                     .HasMaxLength(1000);
+                
+                entity.Property(t => t.ComentarioCierre)
+                    .HasColumnName("comentario_cierre")
+                    .HasMaxLength(1000);
+
+                entity.Property(t => t.CalificacionSatisfaccion)
+                    .HasColumnName("calificacion_satisfaccion");
 
                 entity.Property(t => t.Impacto)
                     .HasColumnName("impacto")
