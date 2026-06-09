@@ -27,6 +27,11 @@ namespace SistemaIncidentes.Api.Models
 
         public DateTime? FechaEscalamiento { get; set; }
 
+        [MaxLength(1000)]
+        public string? MotivoCancelacion { get; set; }
+
+        public DateTime? FechaCancelacion { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Impacto { get; set; } = string.Empty;

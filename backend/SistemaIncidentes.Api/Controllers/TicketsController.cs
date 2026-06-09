@@ -67,6 +67,8 @@ namespace SistemaIncidentes.Api.Controllers
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     MotivoEscalamiento = t.MotivoEscalamiento,
                     FechaEscalamiento = t.FechaEscalamiento,
+                    MotivoCancelacion = t.MotivoCancelacion,
+                    FechaCancelacion = t.FechaCancelacion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -231,6 +233,8 @@ namespace SistemaIncidentes.Api.Controllers
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     MotivoEscalamiento = t.MotivoEscalamiento,
                     FechaEscalamiento = t.FechaEscalamiento,
+                    MotivoCancelacion = t.MotivoCancelacion,
+                    FechaCancelacion = t.FechaCancelacion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -270,8 +274,7 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            var ticket = await _context.Tickets
-                .FirstOrDefaultAsync(t => t.Id == id);
+            var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
             {
@@ -318,8 +321,7 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            var ticket = await _context.Tickets
-                .FirstOrDefaultAsync(t => t.Id == id);
+            var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
             {
@@ -474,9 +476,7 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            var ticket = await _context.Tickets
-                .Include(t => t.EstadoTicket)
-                .FirstOrDefaultAsync(t => t.Id == id);
+            var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
             {
@@ -596,18 +596,12 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket.EstadoTicket.Nombre == "Cerrado")
             {
-                return BadRequest(new
-                {
-                    mensaje = "No se puede escalar un ticket cerrado."
-                });
+                return BadRequest(new { mensaje = "No se puede escalar un ticket cerrado." });
             }
 
             if (ticket.EstadoTicket.Nombre == "Cancelado")
             {
-                return BadRequest(new
-                {
-                    mensaje = "No se puede escalar un ticket cancelado."
-                });
+                return BadRequest(new { mensaje = "No se puede escalar un ticket cancelado." });
             }
 
             if (ticket.EstadoTicket.Nombre == "Resuelto")
@@ -620,10 +614,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket.EstadoTicket.Nombre == "Escalado")
             {
-                return BadRequest(new
-                {
-                    mensaje = "El ticket ya se encuentra escalado."
-                });
+                return BadRequest(new { mensaje = "El ticket ya se encuentra escalado." });
             }
 
             if (ticket.EstadoTicket.Nombre == "Abierto")
@@ -683,8 +674,8 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
-        [HttpPut("{id:int}/resolver")]
-        public async Task<IActionResult> ResolverTicket(int id, [FromBody] ResolverTicketDto dto)
+        [HttpPut("{id:int}/cancelar")]
+        public async Task<IActionResult> CancelarTicket(int id, [FromBody] CancelarTicketDto dto)
         {
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
@@ -716,6 +707,113 @@ namespace SistemaIncidentes.Api.Controllers
                 {
                     mensaje = "Ticket no encontrado."
                 });
+            }
+
+            if (ticket.EstadoTicket == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "El ticket no tiene un estado válido asociado."
+                });
+            }
+
+            bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
+            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
+            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
+
+            if (!esSolicitanteDuenio && !esTecnicoAsignado && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cancelado")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El ticket ya se encuentra cancelado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cerrado")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede cancelar un ticket cerrado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Resuelto")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede cancelar un ticket resuelto. Debe cerrarse formalmente o revisarse mediante un nuevo flujo."
+                });
+            }
+
+            if (rolUsuario == "Solicitante" && ticket.EstadoTicket.Nombre != "Abierto")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El solicitante solo puede cancelar tickets que aún estén en estado 'Abierto'."
+                });
+            }
+
+            var estadoCancelado = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "Cancelado" && e.Activo);
+
+            if (estadoCancelado == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "No se encontró el estado 'Cancelado'. Verifique los datos base del sistema."
+                });
+            }
+
+            ticket.EstadoTicketId = estadoCancelado.Id;
+            ticket.MotivoCancelacion = dto.MotivoCancelacion.Trim();
+            ticket.FechaCancelacion = DateTime.UtcNow;
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Ticket cancelado",
+                "El ticket fue cancelado. Motivo: " + ticket.MotivoCancelacion
+            );
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket cancelado correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
+        [HttpPut("{id:int}/resolver")]
+        public async Task<IActionResult> ResolverTicket(int id, [FromBody] ResolverTicketDto dto)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new { mensaje = "Ticket no encontrado." });
             }
 
             bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
@@ -776,19 +874,12 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
             {
-                return Unauthorized(new
-                {
-                    mensaje = "No se pudo identificar al usuario autenticado."
-                });
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
             }
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
@@ -797,10 +888,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket == null)
             {
-                return NotFound(new
-                {
-                    mensaje = "Ticket no encontrado."
-                });
+                return NotFound(new { mensaje = "Ticket no encontrado." });
             }
 
             bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
@@ -874,6 +962,8 @@ namespace SistemaIncidentes.Api.Controllers
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
                     MotivoEscalamiento = t.MotivoEscalamiento,
                     FechaEscalamiento = t.FechaEscalamiento,
+                    MotivoCancelacion = t.MotivoCancelacion,
+                    FechaCancelacion = t.FechaCancelacion,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,

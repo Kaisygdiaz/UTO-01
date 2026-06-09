@@ -18,6 +18,10 @@ namespace SistemaIncidentes.Api.DTOs
 
         public DateTime? FechaEscalamiento { get; set; }
 
+        public string? MotivoCancelacion { get; set; }
+
+        public DateTime? FechaCancelacion { get; set; }
+
         public string Impacto { get; set; } = string.Empty;
 
         public string Urgencia { get; set; } = string.Empty;
