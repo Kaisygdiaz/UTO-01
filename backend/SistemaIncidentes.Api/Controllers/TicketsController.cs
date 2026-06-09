@@ -168,6 +168,15 @@ namespace SistemaIncidentes.Api.Controllers
             _context.Tickets.Add(ticket);
             await _context.SaveChangesAsync();
 
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuario.Id,
+                "Ticket creado",
+                $"El ticket fue creado con categoría {categoria.Nombre}, prioridad {prioridad.Nombre} y estado Abierto."
+            );
+
+            await _context.SaveChangesAsync();
+
             var ticketCreado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
             return CreatedAtAction(nameof(ObtenerTicketPorId), new { id = ticket.Id }, ticketCreado);
@@ -243,10 +252,71 @@ namespace SistemaIncidentes.Api.Controllers
             return Ok(ticket);
         }
 
+        [HttpGet("{id:int}/bitacora")]
+        public async Task<IActionResult> ObtenerBitacoraTicket(int id)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
+            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
+            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
+
+            if (!esSolicitanteDuenio && !esTecnicoAsignado && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            var bitacora = await _context.BitacoraAuditoria
+                .Include(b => b.Usuario)
+                .Where(b => b.TicketId == id)
+                .OrderBy(b => b.FechaRegistro)
+                .Select(b => new BitacoraResponseDto
+                {
+                    Id = b.Id,
+                    TicketId = b.TicketId,
+                    Usuario = b.Usuario != null ? b.Usuario.NombreCompleto : string.Empty,
+                    Accion = b.Accion,
+                    Detalle = b.Detalle,
+                    FechaRegistro = b.FechaRegistro
+                })
+                .ToListAsync();
+
+            return Ok(bitacora);
+        }
+
         [HttpPut("{id:int}/asignar")]
         public async Task<IActionResult> AsignarTicket(int id, [FromBody] AsignarTicketDto dto)
         {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
 
             if (rolUsuario != "Administrador" && rolUsuario != "Jefe DTI")
             {
@@ -263,6 +333,7 @@ namespace SistemaIncidentes.Api.Controllers
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -311,6 +382,13 @@ namespace SistemaIncidentes.Api.Controllers
             {
                 ticket.FechaPrimeraRespuesta = DateTime.UtcNow;
             }
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Ticket asignado",
+                $"El ticket fue asignado al técnico {tecnico.NombreCompleto} y cambió al estado En proceso."
+            );
 
             await _context.SaveChangesAsync();
 
@@ -389,6 +467,13 @@ namespace SistemaIncidentes.Api.Controllers
             ticket.Solucion = dto.Solucion.Trim();
             ticket.EstadoTicketId = estadoResuelto.Id;
             ticket.FechaResolucion = DateTime.UtcNow;
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Ticket resuelto",
+                "El ticket fue marcado como Resuelto y se registró la solución aplicada."
+            );
 
             await _context.SaveChangesAsync();
 
@@ -470,6 +555,13 @@ namespace SistemaIncidentes.Api.Controllers
                 : dto.ComentarioCierre.Trim();
             ticket.CalificacionSatisfaccion = dto.CalificacionSatisfaccion;
 
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Ticket cerrado",
+                $"El ticket fue cerrado formalmente. Calificación de satisfacción: {(dto.CalificacionSatisfaccion.HasValue ? dto.CalificacionSatisfaccion.Value.ToString() : "No registrada")}."
+            );
+
             await _context.SaveChangesAsync();
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
@@ -511,6 +603,20 @@ namespace SistemaIncidentes.Api.Controllers
                     FechaCierre = t.FechaCierre
                 })
                 .FirstAsync();
+        }
+
+        private async Task RegistrarBitacoraAsync(int ticketId, int usuarioId, string accion, string? detalle)
+        {
+            var registro = new BitacoraAuditoria
+            {
+                TicketId = ticketId,
+                UsuarioId = usuarioId,
+                Accion = accion,
+                Detalle = detalle,
+                FechaRegistro = DateTime.UtcNow
+            };
+
+            await _context.BitacoraAuditoria.AddAsync(registro);
         }
 
         private async Task<Prioridad?> ObtenerPrioridadAsync(string impacto, string urgencia)

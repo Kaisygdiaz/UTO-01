@@ -16,6 +16,7 @@ namespace SistemaIncidentes.Api.Data
         public DbSet<EstadoTicket> EstadosTicket => Set<EstadoTicket>();
         public DbSet<Prioridad> Prioridades => Set<Prioridad>();
         public DbSet<Ticket> Tickets => Set<Ticket>();
+        public DbSet<BitacoraAuditoria> BitacoraAuditoria => Set<BitacoraAuditoria>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -210,11 +211,11 @@ namespace SistemaIncidentes.Api.Data
                     .HasColumnName("descripcion")
                     .HasMaxLength(1000)
                     .IsRequired();
-                
+
                 entity.Property(t => t.Solucion)
                     .HasColumnName("solucion")
                     .HasMaxLength(1000);
-                
+
                 entity.Property(t => t.ComentarioCierre)
                     .HasColumnName("comentario_cierre")
                     .HasMaxLength(1000);
@@ -287,6 +288,47 @@ namespace SistemaIncidentes.Api.Data
                 entity.HasOne(t => t.Prioridad)
                     .WithMany(p => p.Tickets)
                     .HasForeignKey(t => t.PrioridadId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<BitacoraAuditoria>(entity =>
+            {
+                entity.ToTable("bitacora_auditoria");
+
+                entity.HasKey(b => b.Id);
+
+                entity.Property(b => b.Id)
+                    .HasColumnName("id");
+
+                entity.Property(b => b.TicketId)
+                    .HasColumnName("ticket_id")
+                    .IsRequired();
+
+                entity.Property(b => b.UsuarioId)
+                    .HasColumnName("usuario_id")
+                    .IsRequired();
+
+                entity.Property(b => b.Accion)
+                    .HasColumnName("accion")
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(b => b.Detalle)
+                    .HasColumnName("detalle")
+                    .HasMaxLength(1000);
+
+                entity.Property(b => b.FechaRegistro)
+                    .HasColumnName("fecha_registro")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(b => b.Ticket)
+                    .WithMany()
+                    .HasForeignKey(b => b.TicketId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(b => b.Usuario)
+                    .WithMany()
+                    .HasForeignKey(b => b.UsuarioId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
         }
