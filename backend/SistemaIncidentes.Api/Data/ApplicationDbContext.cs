@@ -224,6 +224,13 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(t => t.CalificacionSatisfaccion)
                     .HasColumnName("calificacion_satisfaccion");
 
+                entity.Property(t => t.MotivoEscalamiento)
+                    .HasColumnName("motivo_escalamiento")
+                    .HasMaxLength(1000);
+
+                entity.Property(t => t.FechaEscalamiento)
+                    .HasColumnName("fecha_escalamiento");
+
                 entity.Property(t => t.Impacto)
                     .HasColumnName("impacto")
                     .HasMaxLength(20)

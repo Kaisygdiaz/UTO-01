@@ -22,6 +22,11 @@ namespace SistemaIncidentes.Api.Models
 
         public int? CalificacionSatisfaccion { get; set; }
 
+        [MaxLength(1000)]
+        public string? MotivoEscalamiento { get; set; }
+
+        public DateTime? FechaEscalamiento { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Impacto { get; set; } = string.Empty;

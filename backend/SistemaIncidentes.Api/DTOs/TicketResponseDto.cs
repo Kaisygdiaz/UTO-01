@@ -14,6 +14,10 @@ namespace SistemaIncidentes.Api.DTOs
 
         public int? CalificacionSatisfaccion { get; set; }
 
+        public string? MotivoEscalamiento { get; set; }
+
+        public DateTime? FechaEscalamiento { get; set; }
+
         public string Impacto { get; set; } = string.Empty;
 
         public string Urgencia { get; set; } = string.Empty;

@@ -65,6 +65,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Solucion = t.Solucion,
                     ComentarioCierre = t.ComentarioCierre,
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
+                    MotivoEscalamiento = t.MotivoEscalamiento,
+                    FechaEscalamiento = t.FechaEscalamiento,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -227,6 +229,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Solucion = t.Solucion,
                     ComentarioCierre = t.ComentarioCierre,
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
+                    MotivoEscalamiento = t.MotivoEscalamiento,
+                    FechaEscalamiento = t.FechaEscalamiento,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -539,6 +543,146 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/escalar")]
+        public async Task<IActionResult> EscalarTicket(int id, [FromBody] EscalarTicketDto dto)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
+            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
+
+            if (!esTecnicoAsignado && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "El ticket no tiene un estado válido asociado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cerrado")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket cerrado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cancelado")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket cancelado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Resuelto")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket resuelto. Si el incidente continúa, debe reabrirse o crearse un nuevo ticket."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Escalado")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El ticket ya se encuentra escalado."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Abierto")
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket abierto. Primero debe asignarse a un técnico y pasar a estado 'En proceso'."
+                });
+            }
+
+            if (ticket.EstadoTicket.Nombre != "En proceso")
+            {
+                return BadRequest(new
+                {
+                    mensaje = $"No se puede escalar un ticket en estado '{ticket.EstadoTicket.Nombre}'."
+                });
+            }
+
+            if (ticket.TecnicoAsignadoId == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket sin técnico asignado."
+                });
+            }
+
+            var estadoEscalado = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "Escalado" && e.Activo);
+
+            if (estadoEscalado == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "No se encontró el estado 'Escalado'. Verifique los datos base del sistema."
+                });
+            }
+
+            ticket.EstadoTicketId = estadoEscalado.Id;
+            ticket.MotivoEscalamiento = dto.MotivoEscalamiento.Trim();
+            ticket.FechaEscalamiento = DateTime.UtcNow;
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Ticket escalado",
+                "El ticket fue escalado. Motivo: " + ticket.MotivoEscalamiento
+            );
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket escalado correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
         [HttpPut("{id:int}/resolver")]
         public async Task<IActionResult> ResolverTicket(int id, [FromBody] ResolverTicketDto dto)
         {
@@ -728,6 +872,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Solucion = t.Solucion,
                     ComentarioCierre = t.ComentarioCierre,
                     CalificacionSatisfaccion = t.CalificacionSatisfaccion,
+                    MotivoEscalamiento = t.MotivoEscalamiento,
+                    FechaEscalamiento = t.FechaEscalamiento,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
