@@ -17,6 +17,7 @@ namespace SistemaIncidentes.Api.Data
         public DbSet<Prioridad> Prioridades => Set<Prioridad>();
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<BitacoraAuditoria> BitacoraAuditoria => Set<BitacoraAuditoria>();
+        public DbSet<ComentarioTicket> ComentariosTicket => Set<ComentarioTicket>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -329,6 +330,43 @@ namespace SistemaIncidentes.Api.Data
                 entity.HasOne(b => b.Usuario)
                     .WithMany()
                     .HasForeignKey(b => b.UsuarioId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ComentarioTicket>(entity =>
+            {
+                entity.ToTable("comentarios_ticket");
+
+                entity.HasKey(c => c.Id);
+
+                entity.Property(c => c.Id)
+                    .HasColumnName("id");
+
+                entity.Property(c => c.TicketId)
+                    .HasColumnName("ticket_id")
+                    .IsRequired();
+
+                entity.Property(c => c.UsuarioId)
+                    .HasColumnName("usuario_id")
+                    .IsRequired();
+
+                entity.Property(c => c.Comentario)
+                    .HasColumnName("comentario")
+                    .HasMaxLength(1000)
+                    .IsRequired();
+
+                entity.Property(c => c.FechaRegistro)
+                    .HasColumnName("fecha_registro")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.HasOne(c => c.Ticket)
+                    .WithMany()
+                    .HasForeignKey(c => c.TicketId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.Usuario)
+                    .WithMany()
+                    .HasForeignKey(c => c.UsuarioId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
         }

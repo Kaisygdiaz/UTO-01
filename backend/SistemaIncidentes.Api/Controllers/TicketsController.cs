@@ -277,11 +277,7 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
-            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
-            bool esAdministradorOJefe = rolUsuario == "Administrador" || rolUsuario == "Jefe DTI";
-
-            if (!esSolicitanteDuenio && !esTecnicoAsignado && !esAdministradorOJefe)
+            if (!UsuarioTienePermisoSobreTicket(ticket, usuarioId, rolUsuario))
             {
                 return Forbid();
             }
@@ -302,6 +298,148 @@ namespace SistemaIncidentes.Api.Controllers
                 .ToListAsync();
 
             return Ok(bitacora);
+        }
+
+        [HttpGet("{id:int}/comentarios")]
+        public async Task<IActionResult> ObtenerComentariosTicket(int id)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            if (!UsuarioTienePermisoSobreTicket(ticket, usuarioId, rolUsuario))
+            {
+                return Forbid();
+            }
+
+            var comentarios = await _context.ComentariosTicket
+                .Include(c => c.Usuario)
+                .ThenInclude(u => u!.Rol)
+                .Where(c => c.TicketId == id)
+                .OrderBy(c => c.FechaRegistro)
+                .Select(c => new ComentarioTicketResponseDto
+                {
+                    Id = c.Id,
+                    TicketId = c.TicketId,
+                    Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
+                    Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
+                    Comentario = c.Comentario,
+                    FechaRegistro = c.FechaRegistro
+                })
+                .ToListAsync();
+
+            return Ok(comentarios);
+        }
+
+        [HttpPost("{id:int}/comentarios")]
+        public async Task<IActionResult> CrearComentarioTicket(int id, [FromBody] CrearComentarioTicketDto dto)
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
+            }
+
+            if (!UsuarioTienePermisoSobreTicket(ticket, usuarioId, rolUsuario))
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket == null)
+            {
+                return StatusCode(500, new
+                {
+                    mensaje = "El ticket no tiene un estado válido asociado."
+                });
+            }
+
+            if (!EstadoPermiteComentarios(ticket.EstadoTicket.Nombre))
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se pueden agregar comentarios a tickets cerrados o cancelados."
+                });
+            }
+
+            var comentario = new ComentarioTicket
+            {
+                TicketId = ticket.Id,
+                UsuarioId = usuarioId,
+                Comentario = dto.Comentario.Trim(),
+                FechaRegistro = DateTime.UtcNow
+            };
+
+            await _context.ComentariosTicket.AddAsync(comentario);
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                usuarioId,
+                "Comentario agregado",
+                "Se agregó un comentario de seguimiento al ticket."
+            );
+
+            await _context.SaveChangesAsync();
+
+            var comentarioCreado = await _context.ComentariosTicket
+                .Include(c => c.Usuario)
+                .ThenInclude(u => u!.Rol)
+                .Where(c => c.Id == comentario.Id)
+                .Select(c => new ComentarioTicketResponseDto
+                {
+                    Id = c.Id,
+                    TicketId = c.TicketId,
+                    Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
+                    Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
+                    Comentario = c.Comentario,
+                    FechaRegistro = c.FechaRegistro
+                })
+                .FirstAsync();
+
+            return CreatedAtAction(nameof(ObtenerComentariosTicket), new { id = ticket.Id }, comentarioCreado);
         }
 
         [HttpPut("{id:int}/asignar")]
@@ -617,6 +755,31 @@ namespace SistemaIncidentes.Api.Controllers
             };
 
             await _context.BitacoraAuditoria.AddAsync(registro);
+        }
+
+        private static bool UsuarioTienePermisoSobreTicket(Ticket ticket, int usuarioId, string? rolUsuario)
+        {
+            if (rolUsuario == "Administrador" || rolUsuario == "Jefe DTI")
+            {
+                return true;
+            }
+
+            if (rolUsuario == "Solicitante" && ticket.UsuarioSolicitanteId == usuarioId)
+            {
+                return true;
+            }
+
+            if (rolUsuario == "Técnico" && ticket.TecnicoAsignadoId == usuarioId)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool EstadoPermiteComentarios(string estado)
+        {
+            return estado != "Cerrado" && estado != "Cancelado";
         }
 
         private async Task<Prioridad?> ObtenerPrioridadAsync(string impacto, string urgencia)
