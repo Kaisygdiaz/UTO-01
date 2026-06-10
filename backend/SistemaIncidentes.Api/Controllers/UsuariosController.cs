@@ -68,7 +68,10 @@ namespace SistemaIncidentes.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> ListarUsuarios()
+        public async Task<IActionResult> ListarUsuarios(
+            [FromQuery] string? rol,
+            [FromQuery] bool? activo,
+            [FromQuery] string? busqueda)
         {
             var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
 
@@ -77,8 +80,39 @@ namespace SistemaIncidentes.Api.Controllers
                 return Forbid();
             }
 
-            var usuarios = await _context.Usuarios
+            var query = _context.Usuarios
                 .Include(u => u.Rol)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(rol))
+            {
+                string rolNormalizado = rol.Trim().ToLower();
+
+                query = query.Where(u =>
+                    u.Rol != null &&
+                    (
+                        u.Rol.Nombre.ToLower() == rolNormalizado ||
+                        (rolNormalizado == "tecnico" && u.Rol.Nombre == "Técnico") ||
+                        (rolNormalizado == "técnico" && u.Rol.Nombre == "Técnico") ||
+                        (rolNormalizado == "jefe dti" && u.Rol.Nombre == "Jefe DTI")
+                    ));
+            }
+
+            if (activo.HasValue)
+            {
+                query = query.Where(u => u.Activo == activo.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                string busquedaNormalizada = busqueda.Trim().ToLower();
+
+                query = query.Where(u =>
+                    u.NombreCompleto.ToLower().Contains(busquedaNormalizada) ||
+                    u.Correo.ToLower().Contains(busquedaNormalizada));
+            }
+
+            var usuarios = await query
                 .OrderBy(u => u.NombreCompleto)
                 .Select(u => new UsuarioResponseDto
                 {
@@ -92,7 +126,17 @@ namespace SistemaIncidentes.Api.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(usuarios);
+            return Ok(new
+            {
+                total = usuarios.Count,
+                filtrosAplicados = new
+                {
+                    rol,
+                    activo,
+                    busqueda
+                },
+                usuarios
+            });
         }
 
         [HttpPost]
