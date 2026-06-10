@@ -21,7 +21,14 @@ namespace SistemaIncidentes.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> ListarTickets()
+        public async Task<IActionResult> ListarTickets(
+            [FromQuery] string? estado,
+            [FromQuery] string? prioridad,
+            [FromQuery] int? categoriaId,
+            [FromQuery] int? tecnicoId,
+            [FromQuery] int? solicitanteId,
+            [FromQuery] DateTime? fechaInicio,
+            [FromQuery] DateTime? fechaFin)
         {
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
@@ -55,6 +62,69 @@ namespace SistemaIncidentes.Api.Controllers
                 return Forbid();
             }
 
+            if (!string.IsNullOrWhiteSpace(estado))
+            {
+                string estadoNormalizado = estado.Trim().ToLower();
+
+                query = query.Where(t =>
+                    t.EstadoTicket != null &&
+                    t.EstadoTicket.Nombre.ToLower() == estadoNormalizado);
+            }
+
+            if (!string.IsNullOrWhiteSpace(prioridad))
+            {
+                string prioridadNormalizada = prioridad.Trim().ToLower();
+
+                query = query.Where(t =>
+                    t.Prioridad != null &&
+                    t.Prioridad.Nombre.ToLower() == prioridadNormalizada);
+            }
+
+            if (categoriaId.HasValue)
+            {
+                query = query.Where(t => t.CategoriaId == categoriaId.Value);
+            }
+
+            if (tecnicoId.HasValue)
+            {
+                if (rolUsuario == "Técnico" && tecnicoId.Value != usuarioId)
+                {
+                    return Forbid();
+                }
+
+                query = query.Where(t => t.TecnicoAsignadoId == tecnicoId.Value);
+            }
+
+            if (solicitanteId.HasValue)
+            {
+                if (rolUsuario == "Solicitante" && solicitanteId.Value != usuarioId)
+                {
+                    return Forbid();
+                }
+
+                query = query.Where(t => t.UsuarioSolicitanteId == solicitanteId.Value);
+            }
+
+            if (fechaInicio.HasValue && fechaFin.HasValue && fechaInicio.Value.Date > fechaFin.Value.Date)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "La fecha de inicio no puede ser mayor que la fecha fin."
+                });
+            }
+
+            if (fechaInicio.HasValue)
+            {
+                var inicio = DateTime.SpecifyKind(fechaInicio.Value.Date, DateTimeKind.Utc);
+                query = query.Where(t => t.FechaCreacion >= inicio);
+            }
+
+            if (fechaFin.HasValue)
+            {
+                var fin = DateTime.SpecifyKind(fechaFin.Value.Date.AddDays(1), DateTimeKind.Utc);
+                query = query.Where(t => t.FechaCreacion < fin);
+            }
+
             var tickets = await query
                 .OrderByDescending(t => t.FechaCreacion)
                 .Select(t => new TicketResponseDto
@@ -83,7 +153,21 @@ namespace SistemaIncidentes.Api.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(tickets);
+            return Ok(new
+            {
+                total = tickets.Count,
+                filtrosAplicados = new
+                {
+                    estado,
+                    prioridad,
+                    categoriaId,
+                    tecnicoId,
+                    solicitanteId,
+                    fechaInicio = fechaInicio?.ToString("yyyy-MM-dd"),
+                    fechaFin = fechaFin?.ToString("yyyy-MM-dd")
+                },
+                tickets
+            });
         }
 
         [HttpPost]
@@ -596,12 +680,18 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket.EstadoTicket.Nombre == "Cerrado")
             {
-                return BadRequest(new { mensaje = "No se puede escalar un ticket cerrado." });
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket cerrado."
+                });
             }
 
             if (ticket.EstadoTicket.Nombre == "Cancelado")
             {
-                return BadRequest(new { mensaje = "No se puede escalar un ticket cancelado." });
+                return BadRequest(new
+                {
+                    mensaje = "No se puede escalar un ticket cancelado."
+                });
             }
 
             if (ticket.EstadoTicket.Nombre == "Resuelto")
@@ -614,7 +704,10 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket.EstadoTicket.Nombre == "Escalado")
             {
-                return BadRequest(new { mensaje = "El ticket ya se encuentra escalado." });
+                return BadRequest(new
+                {
+                    mensaje = "El ticket ya se encuentra escalado."
+                });
             }
 
             if (ticket.EstadoTicket.Nombre == "Abierto")
@@ -799,12 +892,19 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
             {
-                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
             }
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
             }
 
             var ticket = await _context.Tickets
@@ -813,7 +913,10 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket == null)
             {
-                return NotFound(new { mensaje = "Ticket no encontrado." });
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
             }
 
             bool esTecnicoAsignado = ticket.TecnicoAsignadoId == usuarioId;
@@ -874,12 +977,19 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
             {
-                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+                return Unauthorized(new
+                {
+                    mensaje = "No se pudo identificar al usuario autenticado."
+                });
             }
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
             }
 
             var ticket = await _context.Tickets
@@ -888,7 +998,10 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (ticket == null)
             {
-                return NotFound(new { mensaje = "Ticket no encontrado." });
+                return NotFound(new
+                {
+                    mensaje = "Ticket no encontrado."
+                });
             }
 
             bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == usuarioId;
