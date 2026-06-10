@@ -87,6 +87,21 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(u => u.Activo)
                     .HasColumnName("activo")
                     .HasDefaultValue(true);
+                
+                entity.Property(u => u.EmailConfirmado)
+                    .HasColumnName("email_confirmado")
+                    .HasDefaultValue(true)
+                    .IsRequired();
+
+                entity.Property(u => u.TokenConfirmacionEmail)
+                    .HasColumnName("token_confirmacion_email")
+                    .HasMaxLength(200);
+
+                entity.Property(u => u.FechaExpiracionTokenConfirmacion)
+                    .HasColumnName("fecha_expiracion_token_confirmacion");
+
+                entity.Property(u => u.FechaConfirmacionEmail)
+                    .HasColumnName("fecha_confirmacion_email");
 
                 entity.Property(u => u.FechaCreacion)
                     .HasColumnName("fecha_creacion")

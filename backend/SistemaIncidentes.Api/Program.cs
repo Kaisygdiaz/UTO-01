@@ -5,12 +5,18 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SistemaIncidentes.Api.Data;
 using SistemaIncidentes.Api.Seeders;
+using SistemaIncidentes.Api.Services;
+using SistemaIncidentes.Api.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Servicios base de la API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Configuración de correo
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Configuración de Swagger con soporte para JWT
 builder.Services.AddSwaggerGen(options =>

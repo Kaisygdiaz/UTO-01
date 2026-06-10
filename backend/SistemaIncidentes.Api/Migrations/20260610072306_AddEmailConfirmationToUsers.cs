@@ -1,0 +1,61 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace SistemaIncidentes.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddEmailConfirmationToUsers : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<bool>(
+                name: "email_confirmado",
+                table: "usuarios",
+                type: "boolean",
+                nullable: false,
+                defaultValue: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "fecha_confirmacion_email",
+                table: "usuarios",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "fecha_expiracion_token_confirmacion",
+                table: "usuarios",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "token_confirmacion_email",
+                table: "usuarios",
+                type: "character varying(200)",
+                maxLength: 200,
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "email_confirmado",
+                table: "usuarios");
+
+            migrationBuilder.DropColumn(
+                name: "fecha_confirmacion_email",
+                table: "usuarios");
+
+            migrationBuilder.DropColumn(
+                name: "fecha_expiracion_token_confirmacion",
+                table: "usuarios");
+
+            migrationBuilder.DropColumn(
+                name: "token_confirmacion_email",
+                table: "usuarios");
+        }
+    }
+}

@@ -1,10 +1,12 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SistemaIncidentes.Api.Data;
 using SistemaIncidentes.Api.DTOs;
 using SistemaIncidentes.Api.Models;
+using SistemaIncidentes.Api.Services;
 
 namespace SistemaIncidentes.Api.Controllers
 {
@@ -14,10 +16,17 @@ namespace SistemaIncidentes.Api.Controllers
     public class UsuariosController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
-        public UsuariosController(ApplicationDbContext context)
+        public UsuariosController(
+            ApplicationDbContext context,
+            IConfiguration configuration,
+            IEmailService emailService)
         {
             _context = context;
+            _configuration = configuration;
+            _emailService = emailService;
         }
 
         [HttpGet("perfil")]
@@ -195,11 +204,16 @@ namespace SistemaIncidentes.Api.Controllers
                 Telefono = string.IsNullOrWhiteSpace(dto.Telefono) ? null : dto.Telefono.Trim(),
                 RolId = rol.Id,
                 Activo = true,
+                EmailConfirmado = false,
+                TokenConfirmacionEmail = GenerarTokenSeguro(),
+                FechaExpiracionTokenConfirmacion = DateTime.UtcNow.AddHours(24),
                 FechaCreacion = DateTime.UtcNow
             };
 
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
+
+            await EnviarCorreoConfirmacionAsync(usuario);
 
             var usuarioCreado = await _context.Usuarios
                 .Include(u => u.Rol)
@@ -216,7 +230,41 @@ namespace SistemaIncidentes.Api.Controllers
                 })
                 .FirstAsync();
 
-            return CreatedAtAction(nameof(ObtenerPerfil), new { id = usuario.Id }, usuarioCreado);
+            return CreatedAtAction(nameof(ObtenerPerfil), new { id = usuario.Id }, new
+            {
+                mensaje = "Usuario creado correctamente. Se envió un correo de confirmación.",
+                usuario = usuarioCreado
+            });
+        }
+
+        private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)
+        {
+            var apiBaseUrl = _configuration["AppSettings:ApiBaseUrl"] ?? "http://localhost:5014";
+            var enlaceConfirmacion = $"{apiBaseUrl}/api/Auth/confirmar-email?token={Uri.EscapeDataString(usuario.TokenConfirmacionEmail ?? string.Empty)}";
+
+            var contenido = $@"
+                <h2>Confirmación de correo electrónico</h2>
+                <p>Hola {usuario.NombreCompleto},</p>
+                <p>Se ha creado una cuenta para usted en el Sistema de Gestión de Incidentes Tecnológicos UTO.</p>
+                <p>Para activar su acceso, confirme su correo electrónico desde el siguiente enlace:</p>
+                <p><a href=""{enlaceConfirmacion}"">Confirmar correo electrónico</a></p>
+                <p>Este enlace vencerá en 24 horas.</p>
+                <p>Si usted no reconoce esta acción, puede ignorar este mensaje.</p>
+            ";
+
+            await _emailService.EnviarCorreoAsync(
+                usuario.Correo,
+                "Confirmación de correo - Sistema de Incidentes UTO",
+                contenido
+            );
+        }
+
+        private static string GenerarTokenSeguro()
+        {
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))
+                .Replace("+", "-")
+                .Replace("/", "_")
+                .Replace("=", "");
         }
     }
 }

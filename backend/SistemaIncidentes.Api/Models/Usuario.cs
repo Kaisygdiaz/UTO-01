@@ -23,6 +23,15 @@ namespace SistemaIncidentes.Api.Models
 
         public bool Activo { get; set; } = true;
 
+        public bool EmailConfirmado { get; set; } = true;
+
+        [MaxLength(200)]
+        public string? TokenConfirmacionEmail { get; set; }
+
+        public DateTime? FechaExpiracionTokenConfirmacion { get; set; }
+
+        public DateTime? FechaConfirmacionEmail { get; set; }
+
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
         public DateTime? FechaActualizacion { get; set; }

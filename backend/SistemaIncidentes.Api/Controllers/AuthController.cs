@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using SistemaIncidentes.Api.Data;
 using SistemaIncidentes.Api.DTOs;
 using SistemaIncidentes.Api.Models;
+using SistemaIncidentes.Api.Services;
 
 namespace SistemaIncidentes.Api.Controllers
 {
@@ -16,11 +18,16 @@ namespace SistemaIncidentes.Api.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
-        public AuthController(ApplicationDbContext context, IConfiguration configuration)
+        public AuthController(
+            ApplicationDbContext context,
+            IConfiguration configuration,
+            IEmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
         }
 
         [HttpPost("registro-inicial")]
@@ -67,6 +74,8 @@ namespace SistemaIncidentes.Api.Controllers
                 Telefono = dto.Telefono,
                 RolId = rolAdmin.Id,
                 Activo = true,
+                EmailConfirmado = true,
+                FechaConfirmacionEmail = DateTime.UtcNow,
                 FechaCreacion = DateTime.UtcNow
             };
 
@@ -81,7 +90,8 @@ namespace SistemaIncidentes.Api.Controllers
                     usuario.Id,
                     usuario.NombreCompleto,
                     usuario.Correo,
-                    Rol = rolAdmin.Nombre
+                    Rol = rolAdmin.Nombre,
+                    usuario.EmailConfirmado
                 }
             });
         }
@@ -118,6 +128,14 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
+            if (!usuario.EmailConfirmado)
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "Debe confirmar su correo electrónico antes de iniciar sesión."
+                });
+            }
+
             bool passwordValido = BCrypt.Net.BCrypt.Verify(dto.Password, usuario.PasswordHash);
 
             if (!passwordValido)
@@ -131,6 +149,155 @@ namespace SistemaIncidentes.Api.Controllers
             var token = GenerarToken(usuario);
 
             return Ok(token);
+        }
+
+        [HttpGet("confirmar-email")]
+        public async Task<IActionResult> ConfirmarEmail([FromQuery] string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de confirmación es requerido."
+                });
+            }
+
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.TokenConfirmacionEmail == token);
+
+            if (usuario == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de confirmación no es válido."
+                });
+            }
+
+            if (usuario.EmailConfirmado)
+            {
+                return Ok(new
+                {
+                    mensaje = "El correo ya se encontraba confirmado."
+                });
+            }
+
+            if (usuario.FechaExpiracionTokenConfirmacion.HasValue &&
+                usuario.FechaExpiracionTokenConfirmacion.Value < DateTime.UtcNow)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de confirmación ha expirado. Solicite un nuevo enlace de confirmación."
+                });
+            }
+
+            usuario.EmailConfirmado = true;
+            usuario.TokenConfirmacionEmail = null;
+            usuario.FechaExpiracionTokenConfirmacion = null;
+            usuario.FechaConfirmacionEmail = DateTime.UtcNow;
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Correo electrónico confirmado correctamente. Ya puede iniciar sesión."
+            });
+        }
+
+        [HttpPost("reenviar-confirmacion")]
+        public async Task<IActionResult> ReenviarConfirmacion([FromBody] LoginDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var correoNormalizado = dto.Correo.Trim().ToLower();
+
+            var usuario = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Correo == correoNormalizado);
+
+            if (usuario == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "No se encontró un usuario registrado con ese correo."
+                });
+            }
+
+            if (!usuario.Activo)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El usuario se encuentra inactivo."
+                });
+            }
+
+            if (usuario.EmailConfirmado)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El correo electrónico ya se encuentra confirmado."
+                });
+            }
+
+            bool passwordValido = BCrypt.Net.BCrypt.Verify(dto.Password, usuario.PasswordHash);
+
+            if (!passwordValido)
+            {
+                return Unauthorized(new
+                {
+                    mensaje = "Credenciales inválidas."
+                });
+            }
+
+            usuario.TokenConfirmacionEmail = GenerarTokenSeguro();
+            usuario.FechaExpiracionTokenConfirmacion = DateTime.UtcNow.AddHours(24);
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            await EnviarCorreoConfirmacionAsync(usuario);
+
+            return Ok(new
+            {
+                mensaje = "Se envió un nuevo correo de confirmación."
+            });
+        }
+
+        private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)
+        {
+            var apiBaseUrl = _configuration["AppSettings:ApiBaseUrl"] ?? "http://localhost:5014";
+            var enlaceConfirmacion = $"{apiBaseUrl}/api/Auth/confirmar-email?token={Uri.EscapeDataString(usuario.TokenConfirmacionEmail ?? string.Empty)}";
+
+            var contenido = $@"
+                <h2>Confirmación de correo electrónico</h2>
+                <p>Hola {usuario.NombreCompleto},</p>
+                <p>Se ha creado una cuenta para usted en el Sistema de Gestión de Incidentes Tecnológicos UTO.</p>
+                <p>Para activar su acceso, confirme su correo electrónico desde el siguiente enlace:</p>
+                <p><a href=""{enlaceConfirmacion}"">Confirmar correo electrónico</a></p>
+                <p>Este enlace vencerá en 24 horas.</p>
+                <p>Si usted no solicitó esta cuenta, puede ignorar este mensaje.</p>
+            ";
+
+            await _emailService.EnviarCorreoAsync(
+                usuario.Correo,
+                "Confirmación de correo - Sistema de Incidentes UTO",
+                contenido
+            );
+        }
+
+        private static string GenerarTokenSeguro()
+        {
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))
+                .Replace("+", "-")
+                .Replace("/", "_")
+                .Replace("=", "");
         }
 
         private AuthResponseDto GenerarToken(Usuario usuario)
