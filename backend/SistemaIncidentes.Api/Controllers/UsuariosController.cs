@@ -237,6 +237,77 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/reset-password")]
+        public async Task<IActionResult> ResetPassword(int id, [FromBody] ResetPasswordDto dto)
+        {
+            var rolUsuarioActual = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (rolUsuarioActual != "Administrador" && rolUsuarioActual != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var usuario = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (usuario == null)
+            {
+                return NotFound(new
+                {
+                    mensaje = "Usuario no encontrado."
+                });
+            }
+
+            if (usuario.Rol == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El usuario no tiene un rol válido asignado."
+                });
+            }
+
+            if (rolUsuarioActual == "Jefe DTI" && usuario.Rol.Nombre == "Administrador")
+            {
+                return Forbid();
+            }
+
+            if (!usuario.Activo)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede reiniciar la contraseña de un usuario inactivo."
+                });
+            }
+
+            usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Contraseña reiniciada correctamente.",
+                usuario = new
+                {
+                    usuario.Id,
+                    usuario.NombreCompleto,
+                    usuario.Correo,
+                    Rol = usuario.Rol.Nombre,
+                    usuario.Activo
+                }
+            });
+        }
+
         private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)
         {
             var apiBaseUrl = _configuration["AppSettings:ApiBaseUrl"] ?? "http://localhost:5014";

@@ -2,9 +2,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SistemaIncidentes.Api.Data;
 using SistemaIncidentes.Api.DTOs;
 using SistemaIncidentes.Api.Models;
+using SistemaIncidentes.Api.Services;
 
 namespace SistemaIncidentes.Api.Controllers
 {
@@ -14,10 +16,17 @@ namespace SistemaIncidentes.Api.Controllers
     public class TicketsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<TicketsController> _logger;
 
-        public TicketsController(ApplicationDbContext context)
+        public TicketsController(
+            ApplicationDbContext context,
+            IEmailService emailService,
+            ILogger<TicketsController> logger)
         {
             _context = context;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -106,32 +115,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             var tickets = await query
                 .OrderByDescending(t => t.FechaCreacion)
-                .Select(t => new TicketResponseDto
-                {
-                    Id = t.Id,
-                    Titulo = t.Titulo,
-                    Descripcion = t.Descripcion,
-                    Solucion = t.Solucion,
-                    ComentarioCierre = t.ComentarioCierre,
-                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
-                    MotivoEscalamiento = t.MotivoEscalamiento,
-                    FechaEscalamiento = t.FechaEscalamiento,
-                    MotivoCancelacion = t.MotivoCancelacion,
-                    FechaCancelacion = t.FechaCancelacion,
-                    MotivoReapertura = t.MotivoReapertura,
-                    FechaReapertura = t.FechaReapertura,
-                    Impacto = t.Impacto,
-                    Urgencia = t.Urgencia,
-                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
-                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
-                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
-                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
-                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
-                    FechaCreacion = t.FechaCreacion,
-                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
-                    FechaResolucion = t.FechaResolucion,
-                    FechaCierre = t.FechaCierre
-                })
+                .Select(t => CrearTicketResponse(t))
                 .ToListAsync();
 
             return Ok(new
@@ -245,8 +229,7 @@ namespace SistemaIncidentes.Api.Controllers
                         limiteResolucion,
                         fechaActual,
                         incumpleRespuesta,
-                        incumpleResolucion
-                    ));
+                        incumpleResolucion));
                 }
                 else
                 {
@@ -270,8 +253,7 @@ namespace SistemaIncidentes.Api.Controllers
                                 limiteResolucion,
                                 fechaActual,
                                 false,
-                                false
-                            ));
+                                false));
                         }
                     }
                 }
@@ -294,7 +276,6 @@ namespace SistemaIncidentes.Api.Controllers
                 TicketsResueltos = tickets.Count(t => t.EstadoTicket != null && t.EstadoTicket.Nombre == "Resuelto"),
                 TicketsCerrados = tickets.Count(t => t.EstadoTicket != null && t.EstadoTicket.Nombre == "Cerrado"),
                 TicketsCancelados = tickets.Count(t => t.EstadoTicket != null && t.EstadoTicket.Nombre == "Cancelado"),
-
                 TicketsEvaluadosSla = ticketsEvaluadosSla,
                 TicketsExcluidosSla = ticketsExcluidosSla,
                 TicketsVencidosRespuesta = ticketsVencidosRespuesta,
@@ -304,53 +285,31 @@ namespace SistemaIncidentes.Api.Controllers
                 PorcentajeCumplimientoSla = porcentajeCumplimientoSla,
                 PorcentajeIncumplimientoSla = porcentajeIncumplimientoSla,
                 FechaGeneracion = fechaActual,
-
                 PorEstado = tickets
                     .GroupBy(t => t.EstadoTicket != null ? t.EstadoTicket.Nombre : "Sin estado")
-                    .Select(g => new ConteoPorEstadoDto
-                    {
-                        Estado = g.Key,
-                        Total = g.Count()
-                    })
+                    .Select(g => new ConteoPorEstadoDto { Estado = g.Key, Total = g.Count() })
                     .OrderByDescending(x => x.Total)
                     .ToList(),
-
                 PorPrioridad = tickets
                     .GroupBy(t => t.Prioridad != null ? t.Prioridad.Nombre : "Sin prioridad")
-                    .Select(g => new ConteoPorPrioridadDto
-                    {
-                        Prioridad = g.Key,
-                        Total = g.Count()
-                    })
+                    .Select(g => new ConteoPorPrioridadDto { Prioridad = g.Key, Total = g.Count() })
                     .OrderByDescending(x => x.Total)
                     .ToList(),
-
                 PorCategoria = tickets
                     .GroupBy(t => t.Categoria != null ? t.Categoria.Nombre : "Sin categoría")
-                    .Select(g => new ConteoPorCategoriaDto
-                    {
-                        Categoria = g.Key,
-                        Total = g.Count()
-                    })
+                    .Select(g => new ConteoPorCategoriaDto { Categoria = g.Key, Total = g.Count() })
                     .OrderByDescending(x => x.Total)
                     .ToList(),
-
                 PorTecnico = tickets
                     .GroupBy(t => t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : "Sin asignar")
-                    .Select(g => new ConteoPorTecnicoDto
-                    {
-                        Tecnico = g.Key,
-                        Total = g.Count()
-                    })
+                    .Select(g => new ConteoPorTecnicoDto { Tecnico = g.Key, Total = g.Count() })
                     .OrderByDescending(x => x.Total)
                     .ToList(),
-
                 TicketsVencidosDetalle = ticketsVencidosDetalle
                     .OrderByDescending(t => t.HorasVencidasResolucion)
                     .ThenBy(t => t.FechaLimiteResolucion)
                     .Take(10)
                     .ToList(),
-
                 TicketsProximosAVencerDetalle = ticketsProximosAVencerDetalle
                     .OrderBy(t => t.HorasRestantesResolucion)
                     .ThenBy(t => t.FechaLimiteResolucion)
@@ -366,11 +325,7 @@ namespace SistemaIncidentes.Api.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var datosUsuario = ObtenerDatosUsuario();
@@ -439,10 +394,16 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 usuario.Id,
                 "Ticket creado",
-                $"El ticket fue creado con categoría {categoria.Nombre}, prioridad {prioridad.Nombre} y estado Abierto."
-            );
+                $"El ticket fue creado con categoría {categoria.Nombre}, prioridad {prioridad.Nombre} y estado Abierto.");
 
             await _context.SaveChangesAsync();
+
+            await EnviarCorreoSeguroAsync(
+                usuario.Correo,
+                $"Ticket #{ticket.Id} registrado - {ticket.Titulo}",
+                CrearCorreoTicketCreado(usuario.NombreCompleto, ticket, categoria.Nombre, prioridad.Nombre),
+                ticket.Id,
+                "Error notificación creación");
 
             var ticketCreado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -482,32 +443,7 @@ namespace SistemaIncidentes.Api.Controllers
             }
 
             var ticket = await query
-                .Select(t => new TicketResponseDto
-                {
-                    Id = t.Id,
-                    Titulo = t.Titulo,
-                    Descripcion = t.Descripcion,
-                    Solucion = t.Solucion,
-                    ComentarioCierre = t.ComentarioCierre,
-                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
-                    MotivoEscalamiento = t.MotivoEscalamiento,
-                    FechaEscalamiento = t.FechaEscalamiento,
-                    MotivoCancelacion = t.MotivoCancelacion,
-                    FechaCancelacion = t.FechaCancelacion,
-                    MotivoReapertura = t.MotivoReapertura,
-                    FechaReapertura = t.FechaReapertura,
-                    Impacto = t.Impacto,
-                    Urgencia = t.Urgencia,
-                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
-                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
-                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
-                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
-                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
-                    FechaCreacion = t.FechaCreacion,
-                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
-                    FechaResolucion = t.FechaResolucion,
-                    FechaCierre = t.FechaCierre
-                })
+                .Select(t => CrearTicketResponse(t))
                 .FirstOrDefaultAsync();
 
             if (ticket == null)
@@ -580,10 +516,18 @@ namespace SistemaIncidentes.Api.Controllers
                 return Forbid();
             }
 
-            var comentarios = await _context.ComentariosTicket
+            var queryComentarios = _context.ComentariosTicket
                 .Include(c => c.Usuario)
                 .ThenInclude(u => u!.Rol)
                 .Where(c => c.TicketId == id)
+                .AsQueryable();
+
+            if (datosUsuario.Value.RolUsuario == "Solicitante")
+            {
+                queryComentarios = queryComentarios.Where(c => !c.EsInterno);
+            }
+
+            var comentarios = await queryComentarios
                 .OrderBy(c => c.FechaRegistro)
                 .Select(c => new ComentarioTicketResponseDto
                 {
@@ -592,6 +536,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
                     Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
                     Comentario = c.Comentario,
+                    EsInterno = c.EsInterno,
+                    TipoComentario = c.EsInterno ? "Interno" : "Público",
                     FechaRegistro = c.FechaRegistro
                 })
                 .ToListAsync();
@@ -611,15 +557,29 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+            }
+
+            if (datosUsuario.Value.RolUsuario == "Solicitante" && dto.EsInterno)
+            {
+                return BadRequest(new { mensaje = "El solicitante no puede crear comentarios internos." });
+            }
+
+            var usuarioComentario = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == datosUsuario.Value.UsuarioId && u.Activo);
+
+            if (usuarioComentario == null)
+            {
+                return Unauthorized(new { mensaje = "Usuario no encontrado o inactivo." });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -647,19 +607,23 @@ namespace SistemaIncidentes.Api.Controllers
                 TicketId = ticket.Id,
                 UsuarioId = datosUsuario.Value.UsuarioId,
                 Comentario = dto.Comentario.Trim(),
+                EsInterno = dto.EsInterno,
                 FechaRegistro = DateTime.UtcNow
             };
 
             await _context.ComentariosTicket.AddAsync(comentario);
 
+            string tipoComentario = comentario.EsInterno ? "interno" : "público";
+
             await RegistrarBitacoraAsync(
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
-                "Comentario agregado",
-                "Se agregó un comentario de seguimiento al ticket."
-            );
+                comentario.EsInterno ? "Comentario interno agregado" : "Comentario público agregado",
+                $"Se agregó un comentario {tipoComentario} al ticket.");
 
             await _context.SaveChangesAsync();
+
+            await NotificarComentarioAsync(ticket, comentario, usuarioComentario);
 
             var comentarioCreado = await _context.ComentariosTicket
                 .Include(c => c.Usuario)
@@ -672,6 +636,8 @@ namespace SistemaIncidentes.Api.Controllers
                     Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
                     Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
                     Comentario = c.Comentario,
+                    EsInterno = c.EsInterno,
+                    TipoComentario = c.EsInterno ? "Interno" : "Público",
                     FechaRegistro = c.FechaRegistro
                 })
                 .FirstAsync();
@@ -696,14 +662,13 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .Include(t => t.EstadoTicket)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
@@ -752,10 +717,16 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket asignado",
-                $"El ticket fue asignado al técnico {tecnico.NombreCompleto} y cambió al estado En proceso."
-            );
+                $"El ticket fue asignado al técnico {tecnico.NombreCompleto} y cambió al estado En proceso.");
 
             await _context.SaveChangesAsync();
+
+            await EnviarCorreoSeguroAsync(
+                tecnico.Correo,
+                $"Ticket #{ticket.Id} asignado - {ticket.Titulo}",
+                CrearCorreoTicketAsignado(tecnico.NombreCompleto, ticket),
+                ticket.Id,
+                "Error notificación asignación");
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -778,15 +749,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -858,10 +829,19 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket escalado",
-                "El ticket fue escalado. Motivo: " + ticket.MotivoEscalamiento
-            );
+                "El ticket fue escalado. Motivo: " + ticket.MotivoEscalamiento);
 
             await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} escalado - {ticket.Titulo}",
+                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Escalado", ticket.MotivoEscalamiento),
+                    ticket.Id,
+                    "Error notificación escalamiento");
+            }
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -884,15 +864,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -950,10 +930,19 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket cancelado",
-                "El ticket fue cancelado. Motivo: " + ticket.MotivoCancelacion
-            );
+                "El ticket fue cancelado. Motivo: " + ticket.MotivoCancelacion);
 
             await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} cancelado - {ticket.Titulo}",
+                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cancelado", ticket.MotivoCancelacion),
+                    ticket.Id,
+                    "Error notificación cancelación");
+            }
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -976,15 +965,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -1041,7 +1030,6 @@ namespace SistemaIncidentes.Api.Controllers
             ticket.EstadoTicketId = estadoAbierto.Id;
             ticket.MotivoReapertura = dto.MotivoReapertura.Trim();
             ticket.FechaReapertura = DateTime.UtcNow;
-
             ticket.FechaResolucion = null;
             ticket.FechaCierre = null;
             ticket.ComentarioCierre = null;
@@ -1051,10 +1039,19 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket reabierto",
-                "El ticket fue reabierto y cambió nuevamente al estado Abierto. Motivo: " + ticket.MotivoReapertura
-            );
+                "El ticket fue reabierto y cambió nuevamente al estado Abierto. Motivo: " + ticket.MotivoReapertura);
 
             await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} reabierto - {ticket.Titulo}",
+                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Abierto", ticket.MotivoReapertura),
+                    ticket.Id,
+                    "Error notificación reapertura");
+            }
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -1077,15 +1074,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -1123,10 +1120,19 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket resuelto",
-                "El ticket fue marcado como Resuelto y se registró la solución aplicada."
-            );
+                "El ticket fue marcado como Resuelto y se registró la solución aplicada.");
 
             await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} resuelto - {ticket.Titulo}",
+                    CrearCorreoTicketResuelto(ticket.UsuarioSolicitante.NombreCompleto, ticket),
+                    ticket.Id,
+                    "Error notificación resolución");
+            }
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -1149,15 +1155,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
                 .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (ticket == null)
@@ -1197,10 +1203,19 @@ namespace SistemaIncidentes.Api.Controllers
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket cerrado",
-                $"El ticket fue cerrado formalmente. Calificación de satisfacción: {(dto.CalificacionSatisfaccion.HasValue ? dto.CalificacionSatisfaccion.Value.ToString() : "No registrada")}."
-            );
+                $"El ticket fue cerrado formalmente. Calificación de satisfacción: {(dto.CalificacionSatisfaccion.HasValue ? dto.CalificacionSatisfaccion.Value.ToString() : "No registrada")}.");
 
             await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} cerrado - {ticket.Titulo}",
+                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cerrado", ticket.ComentarioCierre),
+                    ticket.Id,
+                    "Error notificación cierre");
+            }
 
             var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
 
@@ -1261,33 +1276,38 @@ namespace SistemaIncidentes.Api.Controllers
                 .Include(t => t.EstadoTicket)
                 .Include(t => t.Prioridad)
                 .Where(t => t.Id == ticketId)
-                .Select(t => new TicketResponseDto
-                {
-                    Id = t.Id,
-                    Titulo = t.Titulo,
-                    Descripcion = t.Descripcion,
-                    Solucion = t.Solucion,
-                    ComentarioCierre = t.ComentarioCierre,
-                    CalificacionSatisfaccion = t.CalificacionSatisfaccion,
-                    MotivoEscalamiento = t.MotivoEscalamiento,
-                    FechaEscalamiento = t.FechaEscalamiento,
-                    MotivoCancelacion = t.MotivoCancelacion,
-                    FechaCancelacion = t.FechaCancelacion,
-                    MotivoReapertura = t.MotivoReapertura,
-                    FechaReapertura = t.FechaReapertura,
-                    Impacto = t.Impacto,
-                    Urgencia = t.Urgencia,
-                    Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
-                    Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
-                    Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
-                    UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
-                    TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
-                    FechaCreacion = t.FechaCreacion,
-                    FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
-                    FechaResolucion = t.FechaResolucion,
-                    FechaCierre = t.FechaCierre
-                })
+                .Select(t => CrearTicketResponse(t))
                 .FirstAsync();
+        }
+
+        private static TicketResponseDto CrearTicketResponse(Ticket t)
+        {
+            return new TicketResponseDto
+            {
+                Id = t.Id,
+                Titulo = t.Titulo,
+                Descripcion = t.Descripcion,
+                Solucion = t.Solucion,
+                ComentarioCierre = t.ComentarioCierre,
+                CalificacionSatisfaccion = t.CalificacionSatisfaccion,
+                MotivoEscalamiento = t.MotivoEscalamiento,
+                FechaEscalamiento = t.FechaEscalamiento,
+                MotivoCancelacion = t.MotivoCancelacion,
+                FechaCancelacion = t.FechaCancelacion,
+                MotivoReapertura = t.MotivoReapertura,
+                FechaReapertura = t.FechaReapertura,
+                Impacto = t.Impacto,
+                Urgencia = t.Urgencia,
+                Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
+                Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
+                Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
+                UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
+                TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
+                FechaCreacion = t.FechaCreacion,
+                FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
+                FechaResolucion = t.FechaResolucion,
+                FechaCierre = t.FechaCierre
+            };
         }
 
         private async Task RegistrarBitacoraAsync(int ticketId, int usuarioId, string accion, string? detalle)
@@ -1442,6 +1462,214 @@ namespace SistemaIncidentes.Api.Controllers
                 "baja" => "Baja",
                 _ => valor
             };
+        }
+
+        private async Task NotificarComentarioAsync(Ticket ticket, ComentarioTicket comentario, Usuario usuarioComentario)
+        {
+            string rolComentario = usuarioComentario.Rol?.Nombre ?? string.Empty;
+
+            var destinatarios = new List<Usuario>();
+
+            if (comentario.EsInterno)
+            {
+                if ((rolComentario == "Administrador" || rolComentario == "Jefe DTI") &&
+                    ticket.TecnicoAsignado != null &&
+                    ticket.TecnicoAsignado.Id != usuarioComentario.Id)
+                {
+                    destinatarios.Add(ticket.TecnicoAsignado);
+                }
+
+                if (rolComentario == "Técnico")
+                {
+                    var jefesDti = await _context.Usuarios
+                        .Include(u => u.Rol)
+                        .Where(u =>
+                            u.Activo &&
+                            u.Rol != null &&
+                            u.Rol.Nombre == "Jefe DTI" &&
+                            u.Id != usuarioComentario.Id)
+                        .ToListAsync();
+
+                    destinatarios.AddRange(jefesDti);
+                }
+            }
+            else
+            {
+                if (rolComentario == "Solicitante")
+                {
+                    if (ticket.TecnicoAsignado != null &&
+                        ticket.TecnicoAsignado.Id != usuarioComentario.Id)
+                    {
+                        destinatarios.Add(ticket.TecnicoAsignado);
+                    }
+                }
+                else if (rolComentario == "Técnico")
+                {
+                    if (ticket.UsuarioSolicitante != null &&
+                        ticket.UsuarioSolicitante.Id != usuarioComentario.Id)
+                    {
+                        destinatarios.Add(ticket.UsuarioSolicitante);
+                    }
+                }
+                else if (rolComentario == "Administrador" || rolComentario == "Jefe DTI")
+                {
+                    if (ticket.UsuarioSolicitante != null &&
+                        ticket.UsuarioSolicitante.Id != usuarioComentario.Id)
+                    {
+                        destinatarios.Add(ticket.UsuarioSolicitante);
+                    }
+
+                    if (ticket.TecnicoAsignado != null &&
+                        ticket.TecnicoAsignado.Id != usuarioComentario.Id)
+                    {
+                        destinatarios.Add(ticket.TecnicoAsignado);
+                    }
+                }
+            }
+
+            var destinatariosUnicos = destinatarios
+                .Where(d => !string.IsNullOrWhiteSpace(d.Correo))
+                .GroupBy(d => d.Correo.ToLower())
+                .Select(g => g.First())
+                .ToList();
+
+            foreach (var destinatario in destinatariosUnicos)
+            {
+                await EnviarCorreoSeguroAsync(
+                    destinatario.Correo,
+                    $"Nuevo comentario en ticket #{ticket.Id} - {ticket.Titulo}",
+                    CrearCorreoComentario(
+                        destinatario.NombreCompleto,
+                        ticket,
+                        comentario,
+                        usuarioComentario.NombreCompleto,
+                        rolComentario),
+                    ticket.Id,
+                    "Error notificación comentario");
+            }
+        }
+
+        private async Task EnviarCorreoSeguroAsync(
+            string? destinatario,
+            string asunto,
+            string contenidoHtml,
+            int ticketId,
+            string accionFallo)
+        {
+            if (string.IsNullOrWhiteSpace(destinatario))
+            {
+                return;
+            }
+
+            try
+            {
+                await _emailService.EnviarCorreoAsync(destinatario, asunto, contenidoHtml);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No se pudo enviar correo para el ticket {TicketId}. Acción: {Accion}", ticketId, accionFallo);
+            }
+        }
+
+        private static string CrearCorreoTicketCreado(string nombreSolicitante, Ticket ticket, string categoria, string prioridad)
+        {
+            return CrearPlantillaCorreo(
+                "Ticket registrado correctamente",
+                nombreSolicitante,
+                $@"
+                    <p>Su ticket fue registrado correctamente en la mesa de ayuda.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Categoría:</strong> {EscaparHtml(categoria)}</p>
+                    <p><strong>Prioridad:</strong> {EscaparHtml(prioridad)}</p>
+                    <p><strong>Estado actual:</strong> Abierto</p>
+                ");
+        }
+
+        private static string CrearCorreoTicketAsignado(string nombreTecnico, Ticket ticket)
+        {
+            return CrearPlantillaCorreo(
+                "Nuevo ticket asignado",
+                nombreTecnico,
+                $@"
+                    <p>Se le ha asignado un ticket para atención técnica.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Solicitante:</strong> {EscaparHtml(ticket.UsuarioSolicitante?.NombreCompleto ?? "Sin solicitante")}</p>
+                    <p><strong>Categoría:</strong> {EscaparHtml(ticket.Categoria?.Nombre ?? "Sin categoría")}</p>
+                    <p><strong>Prioridad:</strong> {EscaparHtml(ticket.Prioridad?.Nombre ?? "Sin prioridad")}</p>
+                    <p><strong>Estado actual:</strong> En proceso</p>
+                ");
+        }
+
+        private static string CrearCorreoTicketResuelto(string nombreSolicitante, Ticket ticket)
+        {
+            return CrearPlantillaCorreo(
+                "Ticket resuelto",
+                nombreSolicitante,
+                $@"
+                    <p>Su ticket fue marcado como resuelto por el equipo de soporte.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Solución registrada:</strong></p>
+                    <p>{EscaparHtml(ticket.Solucion ?? "Solución no especificada.")}</p>
+                    <p>Si la solución es correcta, el ticket podrá cerrarse formalmente.</p>
+                ");
+        }
+
+        private static string CrearCorreoCambioEstado(string nombreDestinatario, Ticket ticket, string estado, string? detalle)
+        {
+            return CrearPlantillaCorreo(
+                $"Ticket {estado.ToLower()}",
+                nombreDestinatario,
+                $@"
+                    <p>El estado de su ticket fue actualizado.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Nuevo estado:</strong> {EscaparHtml(estado)}</p>
+                    {(string.IsNullOrWhiteSpace(detalle) ? string.Empty : $"<p><strong>Detalle:</strong> {EscaparHtml(detalle)}</p>")}
+                ");
+        }
+
+        private static string CrearCorreoComentario(
+            string nombreDestinatario,
+            Ticket ticket,
+            ComentarioTicket comentario,
+            string nombreAutor,
+            string rolAutor)
+        {
+            string tipoComentario = comentario.EsInterno ? "interno" : "público";
+
+            return CrearPlantillaCorreo(
+                $"Nuevo comentario {tipoComentario}",
+                nombreDestinatario,
+                $@"
+                    <p>Se agregó un comentario {EscaparHtml(tipoComentario)} al ticket.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Autor:</strong> {EscaparHtml(nombreAutor)} ({EscaparHtml(rolAutor)})</p>
+                    <p><strong>Comentario:</strong></p>
+                    <p>{EscaparHtml(comentario.Comentario)}</p>
+                ");
+        }
+
+        private static string CrearPlantillaCorreo(string titulo, string nombreDestinatario, string contenido)
+        {
+            return $@"
+                <div style=""font-family: Arial, sans-serif; color: #222; line-height: 1.5;"">
+                    <h2 style=""color: #1f4e79;"">{EscaparHtml(titulo)}</h2>
+                    <p>Hola {EscaparHtml(nombreDestinatario)},</p>
+                    {contenido}
+                    <hr />
+                    <p style=""font-size: 12px; color: #666;"">
+                        Este mensaje fue enviado automáticamente por el Sistema de Gestión de Incidentes Tecnológicos UTO.
+                    </p>
+                </div>";
+        }
+
+        private static string EscaparHtml(string valor)
+        {
+            return System.Net.WebUtility.HtmlEncode(valor);
         }
     }
 }

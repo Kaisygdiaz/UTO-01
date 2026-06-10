@@ -12,6 +12,10 @@ namespace SistemaIncidentes.Api.DTOs
 
         public string Comentario { get; set; } = string.Empty;
 
+        public bool EsInterno { get; set; }
+
+        public string TipoComentario { get; set; } = string.Empty;
+
         public DateTime FechaRegistro { get; set; }
     }
 }

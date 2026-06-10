@@ -87,7 +87,7 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(u => u.Activo)
                     .HasColumnName("activo")
                     .HasDefaultValue(true);
-                
+
                 entity.Property(u => u.EmailConfirmado)
                     .HasColumnName("email_confirmado")
                     .HasDefaultValue(true)
@@ -390,6 +390,11 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(c => c.Comentario)
                     .HasColumnName("comentario")
                     .HasMaxLength(1000)
+                    .IsRequired();
+
+                entity.Property(c => c.EsInterno)
+                    .HasColumnName("es_interno")
+                    .HasDefaultValue(false)
                     .IsRequired();
 
                 entity.Property(c => c.FechaRegistro)

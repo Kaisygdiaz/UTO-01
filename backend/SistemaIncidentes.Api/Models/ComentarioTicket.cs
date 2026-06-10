@@ -18,6 +18,8 @@ namespace SistemaIncidentes.Api.Models
         [MaxLength(1000)]
         public string Comentario { get; set; } = string.Empty;
 
+        public bool EsInterno { get; set; } = false;
+
         public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
     }
 }
