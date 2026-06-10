@@ -237,6 +237,13 @@ namespace SistemaIncidentes.Api.Data
 
                 entity.Property(t => t.FechaCancelacion)
                     .HasColumnName("fecha_cancelacion");
+                
+                entity.Property(t => t.MotivoReapertura)
+                    .HasColumnName("motivo_reapertura")
+                    .HasMaxLength(1000);
+
+                entity.Property(t => t.FechaReapertura)
+                    .HasColumnName("fecha_reapertura");
 
                 entity.Property(t => t.Impacto)
                     .HasColumnName("impacto")

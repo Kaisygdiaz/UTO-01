@@ -118,6 +118,8 @@ namespace SistemaIncidentes.Api.Controllers
                     FechaEscalamiento = t.FechaEscalamiento,
                     MotivoCancelacion = t.MotivoCancelacion,
                     FechaCancelacion = t.FechaCancelacion,
+                    MotivoReapertura = t.MotivoReapertura,
+                    FechaReapertura = t.FechaReapertura,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -492,6 +494,8 @@ namespace SistemaIncidentes.Api.Controllers
                     FechaEscalamiento = t.FechaEscalamiento,
                     MotivoCancelacion = t.MotivoCancelacion,
                     FechaCancelacion = t.FechaCancelacion,
+                    MotivoReapertura = t.MotivoReapertura,
+                    FechaReapertura = t.FechaReapertura,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
@@ -960,6 +964,107 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/reabrir")]
+        public async Task<IActionResult> ReabrirTicket(int id, [FromBody] ReabrirTicketDto dto)
+        {
+            var datosUsuario = ObtenerDatosUsuario();
+
+            if (datosUsuario == null)
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.EstadoTicket)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new { mensaje = "Ticket no encontrado." });
+            }
+
+            if (ticket.EstadoTicket == null)
+            {
+                return StatusCode(500, new { mensaje = "El ticket no tiene un estado válido asociado." });
+            }
+
+            bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == datosUsuario.Value.UsuarioId;
+            bool esAdministradorOJefe = datosUsuario.Value.RolUsuario == "Administrador" || datosUsuario.Value.RolUsuario == "Jefe DTI";
+
+            if (!esSolicitanteDuenio && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cancelado")
+            {
+                return BadRequest(new { mensaje = "No se puede reabrir un ticket cancelado." });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Abierto")
+            {
+                return BadRequest(new { mensaje = "El ticket ya se encuentra abierto." });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "En proceso")
+            {
+                return BadRequest(new { mensaje = "No se puede reabrir un ticket que ya está en proceso." });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Escalado")
+            {
+                return BadRequest(new { mensaje = "No se puede reabrir un ticket escalado." });
+            }
+
+            if (ticket.EstadoTicket.Nombre != "Resuelto" && ticket.EstadoTicket.Nombre != "Cerrado")
+            {
+                return BadRequest(new { mensaje = $"No se puede reabrir un ticket en estado '{ticket.EstadoTicket.Nombre}'." });
+            }
+
+            var estadoAbierto = await _context.EstadosTicket
+                .FirstOrDefaultAsync(e => e.Nombre == "Abierto" && e.Activo);
+
+            if (estadoAbierto == null)
+            {
+                return StatusCode(500, new { mensaje = "No se encontró el estado 'Abierto'. Verifique los datos base del sistema." });
+            }
+
+            ticket.EstadoTicketId = estadoAbierto.Id;
+            ticket.MotivoReapertura = dto.MotivoReapertura.Trim();
+            ticket.FechaReapertura = DateTime.UtcNow;
+
+            ticket.FechaResolucion = null;
+            ticket.FechaCierre = null;
+            ticket.ComentarioCierre = null;
+            ticket.CalificacionSatisfaccion = null;
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                datosUsuario.Value.UsuarioId,
+                "Ticket reabierto",
+                "El ticket fue reabierto y cambió nuevamente al estado Abierto. Motivo: " + ticket.MotivoReapertura
+            );
+
+            await _context.SaveChangesAsync();
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket reabierto correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
         [HttpPut("{id:int}/resolver")]
         public async Task<IActionResult> ResolverTicket(int id, [FromBody] ResolverTicketDto dto)
         {
@@ -1168,6 +1273,8 @@ namespace SistemaIncidentes.Api.Controllers
                     FechaEscalamiento = t.FechaEscalamiento,
                     MotivoCancelacion = t.MotivoCancelacion,
                     FechaCancelacion = t.FechaCancelacion,
+                    MotivoReapertura = t.MotivoReapertura,
+                    FechaReapertura = t.FechaReapertura,
                     Impacto = t.Impacto,
                     Urgencia = t.Urgencia,
                     Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
