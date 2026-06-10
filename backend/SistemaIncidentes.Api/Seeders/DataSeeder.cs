@@ -133,10 +133,10 @@ namespace SistemaIncidentes.Api.Seeders
                 },
                 new Prioridad
                 {
-                    Nombre = "Crítica",
-                    Descripcion = "Incidente que afecta servicios críticos o interrumpe operaciones institucionales.",
+                    Nombre = "Critica",
+                    Descripcion = "Incidente critico que afecta servicios esenciales, continuidad operativa o seguridad de la informacion.",
                     TiempoRespuestaHoras = 1,
-                    TiempoResolucionHoras = 8
+                    TiempoResolucionHoras = 4
                 }
             };
 
