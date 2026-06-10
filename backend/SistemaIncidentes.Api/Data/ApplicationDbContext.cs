@@ -18,6 +18,7 @@ namespace SistemaIncidentes.Api.Data
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<BitacoraAuditoria> BitacoraAuditoria => Set<BitacoraAuditoria>();
         public DbSet<ComentarioTicket> ComentariosTicket => Set<ComentarioTicket>();
+        public DbSet<AdjuntoTicket> AdjuntosTicket => Set<AdjuntoTicket>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -237,7 +238,7 @@ namespace SistemaIncidentes.Api.Data
 
                 entity.Property(t => t.FechaCancelacion)
                     .HasColumnName("fecha_cancelacion");
-                
+
                 entity.Property(t => t.MotivoReapertura)
                     .HasColumnName("motivo_reapertura")
                     .HasMaxLength(1000);
@@ -346,7 +347,7 @@ namespace SistemaIncidentes.Api.Data
                 entity.HasOne(b => b.Ticket)
                     .WithMany()
                     .HasForeignKey(b => b.TicketId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasOne(b => b.Usuario)
                     .WithMany()
@@ -383,11 +384,77 @@ namespace SistemaIncidentes.Api.Data
                 entity.HasOne(c => c.Ticket)
                     .WithMany()
                     .HasForeignKey(c => c.TicketId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasOne(c => c.Usuario)
                     .WithMany()
                     .HasForeignKey(c => c.UsuarioId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<AdjuntoTicket>(entity =>
+            {
+                entity.ToTable("adjuntos_ticket");
+
+                entity.HasKey(a => a.Id);
+
+                entity.Property(a => a.Id)
+                    .HasColumnName("id");
+
+                entity.Property(a => a.TicketId)
+                    .HasColumnName("ticket_id")
+                    .IsRequired();
+
+                entity.Property(a => a.UsuarioId)
+                    .HasColumnName("usuario_id")
+                    .IsRequired();
+
+                entity.Property(a => a.NombreArchivoOriginal)
+                    .HasColumnName("nombre_archivo_original")
+                    .HasMaxLength(255)
+                    .IsRequired();
+
+                entity.Property(a => a.NombreArchivoGuardado)
+                    .HasColumnName("nombre_archivo_guardado")
+                    .HasMaxLength(255)
+                    .IsRequired();
+
+                entity.Property(a => a.RutaArchivo)
+                    .HasColumnName("ruta_archivo")
+                    .HasMaxLength(500)
+                    .IsRequired();
+
+                entity.Property(a => a.TipoContenido)
+                    .HasColumnName("tipo_contenido")
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(a => a.TamanoBytes)
+                    .HasColumnName("tamano_bytes")
+                    .IsRequired();
+
+                entity.Property(a => a.Descripcion)
+                    .HasColumnName("descripcion")
+                    .HasMaxLength(500);
+
+                entity.Property(a => a.FechaCarga)
+                    .HasColumnName("fecha_carga")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .IsRequired();
+
+                entity.Property(a => a.Activo)
+                    .HasColumnName("activo")
+                    .HasDefaultValue(true)
+                    .IsRequired();
+
+                entity.HasOne(a => a.Ticket)
+                    .WithMany()
+                    .HasForeignKey(a => a.TicketId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(a => a.Usuario)
+                    .WithMany()
+                    .HasForeignKey(a => a.UsuarioId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
         }
