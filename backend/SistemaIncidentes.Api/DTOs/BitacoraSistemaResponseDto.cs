@@ -1,0 +1,19 @@
+namespace SistemaIncidentes.Api.DTOs
+{
+    public class BitacoraSistemaResponseDto
+    {
+        public int Id { get; set; }
+
+        public string Usuario { get; set; } = string.Empty;
+
+        public string CorreoUsuario { get; set; } = string.Empty;
+
+        public string Modulo { get; set; } = string.Empty;
+
+        public string Accion { get; set; } = string.Empty;
+
+        public string? Detalle { get; set; }
+
+        public DateTime FechaRegistro { get; set; }
+    }
+}

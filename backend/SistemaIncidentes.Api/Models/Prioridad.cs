@@ -19,6 +19,8 @@ namespace SistemaIncidentes.Api.Models
 
         public bool Activo { get; set; } = true;
 
+        public DateTime? FechaActualizacion { get; set; }
+
         public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
     }
 }

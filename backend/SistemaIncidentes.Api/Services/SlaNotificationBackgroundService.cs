@@ -13,7 +13,7 @@ namespace SistemaIncidentes.Api.Services
 
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<SlaNotificationBackgroundService> _logger;
-        private readonly SlaSettings _settings;
+        private readonly SlaSettings _settingsFallback;
 
         public SlaNotificationBackgroundService(
             IServiceScopeFactory scopeFactory,
@@ -22,107 +22,144 @@ namespace SistemaIncidentes.Api.Services
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
-            _settings = options.Value;
+            _settingsFallback = options.Value;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!_settings.Habilitado)
-            {
-                _logger.LogInformation("El servicio automático de alertas SLA está deshabilitado.");
-                return;
-            }
-
             _logger.LogInformation("Servicio automático de alertas SLA iniciado.");
 
-            await EjecutarRevisionSlaAsync(stoppingToken);
-
-            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(_settings.IntervaloRevisionMinutos));
-
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await EjecutarRevisionSlaAsync(stoppingToken);
+                int intervaloRevisionMinutos = _settingsFallback.IntervaloRevisionMinutos <= 0
+                    ? 1
+                    : _settingsFallback.IntervaloRevisionMinutos;
+
+                try
+                {
+                    intervaloRevisionMinutos = await EjecutarRevisionSlaAsync(stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Servicio automático de alertas SLA detenido.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error durante la revisión automática de alertas SLA.");
+                }
+
+                if (intervaloRevisionMinutos <= 0)
+                {
+                    intervaloRevisionMinutos = 1;
+                }
+
+                await Task.Delay(TimeSpan.FromMinutes(intervaloRevisionMinutos), stoppingToken);
             }
         }
 
-        private async Task EjecutarRevisionSlaAsync(CancellationToken cancellationToken)
+        private async Task<int> EjecutarRevisionSlaAsync(CancellationToken cancellationToken)
         {
-            try
+            using var scope = _scopeFactory.CreateScope();
+
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+            var configuracion = await ObtenerConfiguracionSlaAsync(context, cancellationToken);
+
+            if (!configuracion.Habilitado)
             {
-                using var scope = _scopeFactory.CreateScope();
+                _logger.LogInformation("El servicio automático de alertas SLA está deshabilitado desde configuración administrable.");
+                return configuracion.IntervaloRevisionMinutos;
+            }
 
-                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var fechaActual = DateTime.UtcNow;
 
-                var fechaActual = DateTime.UtcNow;
+            var tickets = await context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
+                .Include(t => t.EstadoTicket)
+                .Include(t => t.Prioridad)
+                .Where(t =>
+                    t.Prioridad != null &&
+                    t.EstadoTicket != null &&
+                    (
+                        t.EstadoTicket.Nombre == "Abierto" ||
+                        t.EstadoTicket.Nombre == "En proceso" ||
+                        t.EstadoTicket.Nombre == "Escalado"
+                    ))
+                .ToListAsync(cancellationToken);
 
-                var tickets = await context.Tickets
-                    .Include(t => t.UsuarioSolicitante)
-                    .Include(t => t.TecnicoAsignado)
-                    .Include(t => t.EstadoTicket)
-                    .Include(t => t.Prioridad)
-                    .Where(t =>
-                        t.Prioridad != null &&
-                        t.EstadoTicket != null &&
-                        (
-                            t.EstadoTicket.Nombre == "Abierto" ||
-                            t.EstadoTicket.Nombre == "En proceso" ||
-                            t.EstadoTicket.Nombre == "Escalado"
-                        ))
-                    .ToListAsync(cancellationToken);
-
-                foreach (var ticket in tickets)
+            foreach (var ticket in tickets)
+            {
+                if (ticket.Prioridad == null || ticket.EstadoTicket == null)
                 {
-                    if (ticket.Prioridad == null || ticket.EstadoTicket == null)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var fechaCreacion = NormalizarFechaUtc(ticket.FechaCreacion);
-                    var fechaLimiteResolucion = fechaCreacion.AddHours(ticket.Prioridad.TiempoResolucionHoras);
+                var fechaCreacion = NormalizarFechaUtc(ticket.FechaCreacion);
+                var fechaLimiteResolucion = fechaCreacion.AddHours(ticket.Prioridad.TiempoResolucionHoras);
 
-                    var horasTotalesResolucion = ticket.Prioridad.TiempoResolucionHoras;
-                    var horasRestantesResolucion = (fechaLimiteResolucion - fechaActual).TotalHours;
+                var horasTotalesResolucion = ticket.Prioridad.TiempoResolucionHoras;
+                var horasRestantesResolucion = (fechaLimiteResolucion - fechaActual).TotalHours;
 
-                    if (fechaActual > fechaLimiteResolucion)
-                    {
-                        await ProcesarAlertaAsync(
-                            context,
-                            emailService,
-                            ticket,
-                            TipoAlertaVencido,
-                            "Ticket vencido por SLA",
-                            fechaLimiteResolucion,
-                            horasRestantesResolucion,
-                            cancellationToken);
+                if (fechaActual > fechaLimiteResolucion)
+                {
+                    await ProcesarAlertaAsync(
+                        context,
+                        emailService,
+                        ticket,
+                        TipoAlertaVencido,
+                        "Ticket vencido por SLA",
+                        fechaLimiteResolucion,
+                        horasRestantesResolucion,
+                        cancellationToken);
 
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var porcentajeRestante = horasRestantesResolucion * 100 / horasTotalesResolucion;
+                var porcentajeRestante = horasRestantesResolucion * 100 / horasTotalesResolucion;
 
-                    if (porcentajeRestante <= _settings.PorcentajeProximoVencimiento)
-                    {
-                        await ProcesarAlertaAsync(
-                            context,
-                            emailService,
-                            ticket,
-                            TipoAlertaProximoVencimiento,
-                            "Ticket próximo a vencer SLA",
-                            fechaLimiteResolucion,
-                            horasRestantesResolucion,
-                            cancellationToken);
-                    }
+                if (porcentajeRestante <= configuracion.PorcentajeProximoVencimiento)
+                {
+                    await ProcesarAlertaAsync(
+                        context,
+                        emailService,
+                        ticket,
+                        TipoAlertaProximoVencimiento,
+                        "Ticket próximo a vencer SLA",
+                        fechaLimiteResolucion,
+                        horasRestantesResolucion,
+                        cancellationToken);
                 }
             }
-            catch (OperationCanceledException)
+
+            return configuracion.IntervaloRevisionMinutos;
+        }
+
+        private async Task<ConfiguracionSla> ObtenerConfiguracionSlaAsync(
+            ApplicationDbContext context,
+            CancellationToken cancellationToken)
+        {
+            var configuracion = await context.ConfiguracionesSla.FirstOrDefaultAsync(cancellationToken);
+
+            if (configuracion != null)
             {
-                _logger.LogInformation("Servicio automático de alertas SLA detenido.");
+                return configuracion;
             }
-            catch (Exception ex)
+
+            configuracion = new ConfiguracionSla
             {
-                _logger.LogError(ex, "Error durante la revisión automática de alertas SLA.");
-            }
+                Habilitado = _settingsFallback.Habilitado,
+                IntervaloRevisionMinutos = _settingsFallback.IntervaloRevisionMinutos <= 0 ? 1 : _settingsFallback.IntervaloRevisionMinutos,
+                PorcentajeProximoVencimiento = _settingsFallback.PorcentajeProximoVencimiento <= 0 ? 25 : _settingsFallback.PorcentajeProximoVencimiento,
+                FechaCreacion = DateTime.UtcNow
+            };
+
+            context.ConfiguracionesSla.Add(configuracion);
+            await context.SaveChangesAsync(cancellationToken);
+
+            return configuracion;
         }
 
         private async Task ProcesarAlertaAsync(

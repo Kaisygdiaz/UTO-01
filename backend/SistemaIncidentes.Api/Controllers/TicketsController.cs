@@ -1546,30 +1546,16 @@ namespace SistemaIncidentes.Api.Controllers
             string impactoNormalizado = NormalizarTexto(impacto);
             string urgenciaNormalizada = NormalizarTexto(urgencia);
 
-            string nombrePrioridad = (impactoNormalizado, urgenciaNormalizada) switch
-            {
-                ("Alto", "Alta") => "Critica",
-                ("Alto", "Media") => "Alta",
-                ("Alto", "Baja") => "Media",
+            var registroMatriz = await _context.MatrizPrioridades
+                .Include(m => m.Prioridad)
+                .FirstOrDefaultAsync(m =>
+                    m.Activo &&
+                    m.Impacto == impactoNormalizado &&
+                    m.Urgencia == urgenciaNormalizada &&
+                    m.Prioridad != null &&
+                    m.Prioridad.Activo);
 
-                ("Medio", "Alta") => "Alta",
-                ("Medio", "Media") => "Media",
-                ("Medio", "Baja") => "Baja",
-
-                ("Bajo", "Alta") => "Media",
-                ("Bajo", "Media") => "Baja",
-                ("Bajo", "Baja") => "Baja",
-
-                _ => string.Empty
-            };
-
-            if (string.IsNullOrWhiteSpace(nombrePrioridad))
-            {
-                return null;
-            }
-
-            return await _context.Prioridades
-                .FirstOrDefaultAsync(p => p.Nombre == nombrePrioridad && p.Activo);
+            return registroMatriz?.Prioridad;
         }
 
         private static string NormalizarTexto(string valor)

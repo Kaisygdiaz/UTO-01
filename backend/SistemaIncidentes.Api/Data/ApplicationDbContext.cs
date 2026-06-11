@@ -20,6 +20,9 @@ namespace SistemaIncidentes.Api.Data
         public DbSet<ComentarioTicket> ComentariosTicket => Set<ComentarioTicket>();
         public DbSet<AdjuntoTicket> AdjuntosTicket => Set<AdjuntoTicket>();
         public DbSet<NotificacionSla> NotificacionesSla => Set<NotificacionSla>();
+        public DbSet<MatrizPrioridad> MatrizPrioridades => Set<MatrizPrioridad>();
+        public DbSet<ConfiguracionSla> ConfiguracionesSla => Set<ConfiguracionSla>();
+        public DbSet<BitacoraSistema> BitacoraSistema => Set<BitacoraSistema>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -156,6 +159,9 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(c => c.FechaCreacion)
                     .HasColumnName("fecha_creacion")
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.Property(c => c.FechaActualizacion)
+                    .HasColumnName("fecha_actualizacion");
             });
 
             modelBuilder.Entity<EstadoTicket>(entity =>
@@ -216,6 +222,9 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(p => p.Activo)
                     .HasColumnName("activo")
                     .HasDefaultValue(true);
+
+                entity.Property(p => p.FechaActualizacion)
+                    .HasColumnName("fecha_actualizacion");
             });
 
             modelBuilder.Entity<Ticket>(entity =>
@@ -531,6 +540,130 @@ namespace SistemaIncidentes.Api.Data
                     .WithMany()
                     .HasForeignKey(n => n.TicketId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<MatrizPrioridad>(entity =>
+            {
+                entity.ToTable("matriz_prioridad");
+
+                entity.HasKey(m => m.Id);
+
+                entity.Property(m => m.Id)
+                    .HasColumnName("id");
+
+                entity.Property(m => m.Impacto)
+                    .HasColumnName("impacto")
+                    .HasMaxLength(20)
+                    .IsRequired();
+
+                entity.Property(m => m.Urgencia)
+                    .HasColumnName("urgencia")
+                    .HasMaxLength(20)
+                    .IsRequired();
+
+                entity.Property(m => m.PrioridadId)
+                    .HasColumnName("prioridad_id")
+                    .IsRequired();
+
+                entity.Property(m => m.Activo)
+                    .HasColumnName("activo")
+                    .HasDefaultValue(true)
+                    .IsRequired();
+
+                entity.Property(m => m.FechaCreacion)
+                    .HasColumnName("fecha_creacion")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .IsRequired();
+
+                entity.Property(m => m.FechaActualizacion)
+                    .HasColumnName("fecha_actualizacion");
+
+                entity.HasIndex(m => new { m.Impacto, m.Urgencia })
+                    .IsUnique();
+
+                entity.HasOne(m => m.Prioridad)
+                    .WithMany()
+                    .HasForeignKey(m => m.PrioridadId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<BitacoraSistema>(entity =>
+            {
+                entity.ToTable("bitacora_sistema");
+
+                entity.HasKey(b => b.Id);
+
+                entity.Property(b => b.Id)
+                    .HasColumnName("id");
+
+                entity.Property(b => b.UsuarioId)
+                    .HasColumnName("usuario_id")
+                    .IsRequired();
+
+                entity.Property(b => b.Modulo)
+                    .HasColumnName("modulo")
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(b => b.Accion)
+                    .HasColumnName("accion")
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(b => b.Detalle)
+                    .HasColumnName("detalle")
+                    .HasMaxLength(1500);
+
+                entity.Property(b => b.FechaRegistro)
+                    .HasColumnName("fecha_registro")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .IsRequired();
+
+                entity.HasOne(b => b.Usuario)
+                    .WithMany()
+                    .HasForeignKey(b => b.UsuarioId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ConfiguracionSla>(entity =>
+            {
+                entity.ToTable("configuracion_sla");
+
+                entity.HasKey(c => c.Id);
+
+                entity.Property(c => c.Id)
+                    .HasColumnName("id");
+
+                entity.Property(c => c.Habilitado)
+                    .HasColumnName("habilitado")
+                    .HasDefaultValue(true)
+                    .IsRequired();
+
+                entity.Property(c => c.IntervaloRevisionMinutos)
+                    .HasColumnName("intervalo_revision_minutos")
+                    .HasDefaultValue(1)
+                    .IsRequired();
+
+                entity.Property(c => c.PorcentajeProximoVencimiento)
+                    .HasColumnName("porcentaje_proximo_vencimiento")
+                    .HasDefaultValue(25)
+                    .IsRequired();
+
+                entity.Property(c => c.FechaCreacion)
+                    .HasColumnName("fecha_creacion")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .IsRequired();
+
+                entity.Property(c => c.FechaActualizacion)
+                    .HasColumnName("fecha_actualizacion");
+
+                entity.Property(c => c.UsuarioActualizacionId)
+                    .HasColumnName("usuario_actualizacion_id");
+
+                entity.HasOne(c => c.UsuarioActualizacion)
+                    .WithMany()
+                    .HasForeignKey(c => c.UsuarioActualizacionId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }

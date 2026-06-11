@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SistemaIncidentes.Api.Data;
@@ -11,9 +12,11 @@ using SistemaIncidentes.Api.Data;
 namespace SistemaIncidentes.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611045236_AddAdministracionCatalogosSla")]
+    partial class AddAdministracionCatalogosSla
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -134,49 +137,6 @@ namespace SistemaIncidentes.Api.Migrations
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("bitacora_auditoria", (string)null);
-                });
-
-            modelBuilder.Entity("SistemaIncidentes.Api.Models.BitacoraSistema", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Accion")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("accion");
-
-                    b.Property<string>("Detalle")
-                        .HasMaxLength(1500)
-                        .HasColumnType("character varying(1500)")
-                        .HasColumnName("detalle");
-
-                    b.Property<DateTime>("FechaRegistro")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("fecha_registro")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("Modulo")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("modulo");
-
-                    b.Property<int>("UsuarioId")
-                        .HasColumnType("integer")
-                        .HasColumnName("usuario_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UsuarioId");
-
-                    b.ToTable("bitacora_sistema", (string)null);
                 });
 
             modelBuilder.Entity("SistemaIncidentes.Api.Models.Categoria", b =>
@@ -781,17 +741,6 @@ namespace SistemaIncidentes.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Ticket");
-
-                    b.Navigation("Usuario");
-                });
-
-            modelBuilder.Entity("SistemaIncidentes.Api.Models.BitacoraSistema", b =>
-                {
-                    b.HasOne("SistemaIncidentes.Api.Models.Usuario", "Usuario")
-                        .WithMany()
-                        .HasForeignKey("UsuarioId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.Navigation("Usuario");
                 });

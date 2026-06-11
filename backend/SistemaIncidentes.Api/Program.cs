@@ -4,17 +4,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SistemaIncidentes.Api.Data;
+using SistemaIncidentes.Api.Models;
 using SistemaIncidentes.Api.Seeders;
 using SistemaIncidentes.Api.Services;
 using SistemaIncidentes.Api.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Servicios base de la API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// Configuración CORS para frontend
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+builder.Services.AddScoped<IEmailService, EmailService>();
+
+builder.Services.Configure<SlaSettings>(builder.Configuration.GetSection("SlaSettings"));
+builder.Services.AddHostedService<SlaNotificationBackgroundService>();
+
 var frontendUrl = builder.Configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
 
 builder.Services.AddCors(options =>
@@ -28,22 +33,13 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Configuración de correo
-builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
-builder.Services.AddScoped<IEmailService, EmailService>();
-
-// Configuración de alertas SLA automáticas
-builder.Services.Configure<SlaSettings>(builder.Configuration.GetSection("SlaSettings"));
-builder.Services.AddHostedService<SlaNotificationBackgroundService>();
-
-// Configuración de Swagger con soporte para JWT
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Sistema de Gestión de Incidentes Tecnológicos API",
         Version = "v1",
-        Description = "API para la gestión de incidentes tecnológicos con autenticación, roles y trazabilidad."
+        Description = "API para la gestión de incidentes tecnológicos con autenticación, roles, SLA y trazabilidad."
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -74,11 +70,9 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// Conexión a PostgreSQL con Entity Framework Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Configuración JWT
 var jwtKey = builder.Configuration["JwtSettings:Key"];
 var jwtIssuer = builder.Configuration["JwtSettings:Issuer"];
 var jwtAudience = builder.Configuration["JwtSettings:Audience"];
@@ -117,16 +111,15 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await DataSeeder.SeedAsync(context);
+    await SeedConfiguracionAdministrableAsync(context);
 }
 
-// Swagger solo en ambiente de desarrollo
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Ruta inicial de verificación
 app.MapGet("/", () => new
 {
     nombre = "Sistema Web de Gestión de Incidentes Tecnológicos",
@@ -135,14 +128,57 @@ app.MapGet("/", () => new
     entorno = app.Environment.EnvironmentName
 });
 
-// Middleware base
 app.UseHttpsRedirection();
-
 app.UseCors("FrontendPolicy");
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
+
+static async Task SeedConfiguracionAdministrableAsync(ApplicationDbContext context)
+{
+    if (!await context.ConfiguracionesSla.AnyAsync())
+    {
+        context.ConfiguracionesSla.Add(new ConfiguracionSla
+        {
+            Habilitado = true,
+            IntervaloRevisionMinutos = 1,
+            PorcentajeProximoVencimiento = 25,
+            FechaCreacion = DateTime.UtcNow
+        });
+    }
+
+    if (!await context.MatrizPrioridades.AnyAsync())
+    {
+        var prioridades = await context.Prioridades.ToListAsync();
+
+        int ObtenerPrioridadId(string nombre)
+        {
+            var prioridad = prioridades.FirstOrDefault(p => p.Nombre == nombre);
+
+            if (prioridad == null)
+            {
+                throw new InvalidOperationException($"No se encontró la prioridad base '{nombre}'. Verifique el seeder de prioridades.");
+            }
+
+            return prioridad.Id;
+        }
+
+        var matriz = new List<MatrizPrioridad>
+        {
+            new MatrizPrioridad { Impacto = "Alto", Urgencia = "Alta", PrioridadId = ObtenerPrioridadId("Critica"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Alto", Urgencia = "Media", PrioridadId = ObtenerPrioridadId("Alta"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Alto", Urgencia = "Baja", PrioridadId = ObtenerPrioridadId("Media"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Medio", Urgencia = "Alta", PrioridadId = ObtenerPrioridadId("Alta"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Medio", Urgencia = "Media", PrioridadId = ObtenerPrioridadId("Media"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Medio", Urgencia = "Baja", PrioridadId = ObtenerPrioridadId("Baja"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Bajo", Urgencia = "Alta", PrioridadId = ObtenerPrioridadId("Media"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Bajo", Urgencia = "Media", PrioridadId = ObtenerPrioridadId("Baja"), FechaCreacion = DateTime.UtcNow },
+            new MatrizPrioridad { Impacto = "Bajo", Urgencia = "Baja", PrioridadId = ObtenerPrioridadId("Baja"), FechaCreacion = DateTime.UtcNow }
+        };
+
+        context.MatrizPrioridades.AddRange(matriz);
+    }
+
+    await context.SaveChangesAsync();
+}
