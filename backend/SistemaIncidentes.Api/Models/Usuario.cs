@@ -32,6 +32,11 @@ namespace SistemaIncidentes.Api.Models
 
         public DateTime? FechaConfirmacionEmail { get; set; }
 
+        [MaxLength(200)]
+        public string? TokenResetPassword { get; set; }
+
+        public DateTime? FechaExpiracionTokenResetPassword { get; set; }
+
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
         public DateTime? FechaActualizacion { get; set; }

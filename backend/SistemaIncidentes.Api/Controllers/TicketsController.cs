@@ -113,10 +113,13 @@ namespace SistemaIncidentes.Api.Controllers
                 query = query.Where(t => t.FechaCreacion < fin);
             }
 
-            var tickets = await query
+            var ticketsEntidad = await query
                 .OrderByDescending(t => t.FechaCreacion)
-                .Select(t => CrearTicketResponse(t))
                 .ToListAsync();
+
+            var tickets = ticketsEntidad
+                .Select(CrearTicketResponse)
+                .ToList();
 
             return Ok(new
             {
@@ -143,6 +146,12 @@ namespace SistemaIncidentes.Api.Controllers
             if (datosUsuario == null)
             {
                 return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (datosUsuario.Value.RolUsuario != "Administrador" &&
+                datosUsuario.Value.RolUsuario != "Jefe DTI")
+            {
+                return Forbid();
             }
 
             var query = ObtenerQueryTicketsPorRol(datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario);
@@ -442,16 +451,14 @@ namespace SistemaIncidentes.Api.Controllers
                 return Forbid();
             }
 
-            var ticket = await query
-                .Select(t => CrearTicketResponse(t))
-                .FirstOrDefaultAsync();
+            var ticketEntidad = await query.FirstOrDefaultAsync();
 
-            if (ticket == null)
+            if (ticketEntidad == null)
             {
                 return NotFound(new { mensaje = "Ticket no encontrado o no tiene permisos para consultarlo." });
             }
 
-            return Ok(ticket);
+            return Ok(CrearTicketResponse(ticketEntidad));
         }
 
         [HttpGet("{id:int}/bitacora")]
@@ -462,6 +469,11 @@ namespace SistemaIncidentes.Api.Controllers
             if (datosUsuario == null)
             {
                 return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (datosUsuario.Value.RolUsuario == "Solicitante")
+            {
+                return Forbid();
             }
 
             var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id);
@@ -886,10 +898,9 @@ namespace SistemaIncidentes.Api.Controllers
             }
 
             bool esSolicitanteDuenio = ticket.UsuarioSolicitanteId == datosUsuario.Value.UsuarioId;
-            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == datosUsuario.Value.UsuarioId;
             bool esAdministradorOJefe = datosUsuario.Value.RolUsuario == "Administrador" || datosUsuario.Value.RolUsuario == "Jefe DTI";
 
-            if (!esSolicitanteDuenio && !esTecnicoAsignado && !esAdministradorOJefe)
+            if (!esSolicitanteDuenio && !esAdministradorOJefe)
             {
                 return Forbid();
             }
@@ -1269,15 +1280,15 @@ namespace SistemaIncidentes.Api.Controllers
 
         private async Task<TicketResponseDto> ObtenerTicketResponsePorIdAsync(int ticketId)
         {
-            return await _context.Tickets
+            var ticket = await _context.Tickets
                 .Include(t => t.UsuarioSolicitante)
                 .Include(t => t.TecnicoAsignado)
                 .Include(t => t.Categoria)
                 .Include(t => t.EstadoTicket)
                 .Include(t => t.Prioridad)
-                .Where(t => t.Id == ticketId)
-                .Select(t => CrearTicketResponse(t))
-                .FirstAsync();
+                .FirstAsync(t => t.Id == ticketId);
+
+            return CrearTicketResponse(ticket);
         }
 
         private static TicketResponseDto CrearTicketResponse(Ticket t)

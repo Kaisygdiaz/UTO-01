@@ -104,6 +104,13 @@ namespace SistemaIncidentes.Api.Data
                 entity.Property(u => u.FechaConfirmacionEmail)
                     .HasColumnName("fecha_confirmacion_email");
 
+                entity.Property(u => u.TokenResetPassword)
+                    .HasColumnName("token_reset_password")
+                    .HasMaxLength(200);
+
+                entity.Property(u => u.FechaExpiracionTokenResetPassword)
+                    .HasColumnName("fecha_expiracion_token_reset_password");
+
                 entity.Property(u => u.FechaCreacion)
                     .HasColumnName("fecha_creacion")
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");

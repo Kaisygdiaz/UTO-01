@@ -270,6 +270,115 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPost("solicitar-reset-password")]
+        public async Task<IActionResult> SolicitarResetPassword([FromBody] SolicitarResetPasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            var correoNormalizado = dto.Correo.Trim().ToLower();
+
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.Correo == correoNormalizado);
+
+            var respuestaGenerica = new
+            {
+                mensaje = "Si el correo existe y está habilitado, se enviará un enlace para restablecer la contraseña."
+            };
+
+            if (usuario == null || !usuario.Activo || !usuario.EmailConfirmado)
+            {
+                return Ok(respuestaGenerica);
+            }
+
+            usuario.TokenResetPassword = GenerarTokenSeguro();
+            usuario.FechaExpiracionTokenResetPassword = DateTime.UtcNow.AddHours(1);
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            await EnviarCorreoResetPasswordAsync(usuario);
+
+            return Ok(respuestaGenerica);
+        }
+
+        [HttpPost("confirmar-reset-password")]
+        public async Task<IActionResult> ConfirmarResetPassword([FromBody] ConfirmarResetPasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "Los datos enviados no son válidos.",
+                    errores = ModelState
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Token))
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de recuperación es requerido."
+                });
+            }
+
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.TokenResetPassword == dto.Token);
+
+            if (usuario == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de recuperación no es válido."
+                });
+            }
+
+            if (!usuario.Activo)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El usuario se encuentra inactivo."
+                });
+            }
+
+            if (usuario.FechaExpiracionTokenResetPassword.HasValue &&
+                usuario.FechaExpiracionTokenResetPassword.Value < DateTime.UtcNow)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "El token de recuperación ha expirado. Solicite un nuevo enlace."
+                });
+            }
+
+            bool mismaPassword = BCrypt.Net.BCrypt.Verify(dto.NuevaPassword, usuario.PasswordHash);
+
+            if (mismaPassword)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "La nueva contraseña no puede ser igual a la contraseña actual."
+                });
+            }
+
+            usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
+            usuario.TokenResetPassword = null;
+            usuario.FechaExpiracionTokenResetPassword = null;
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Contraseña restablecida correctamente. Ya puede iniciar sesión."
+            });
+        }
+
         private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)
         {
             var apiBaseUrl = _configuration["AppSettings:ApiBaseUrl"] ?? "http://localhost:5014";
@@ -277,7 +386,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             var contenido = $@"
                 <h2>Confirmación de correo electrónico</h2>
-                <p>Hola {usuario.NombreCompleto},</p>
+                <p>Hola {EscaparHtml(usuario.NombreCompleto)},</p>
                 <p>Se ha creado una cuenta para usted en el Sistema de Gestión de Incidentes Tecnológicos UTO.</p>
                 <p>Para activar su acceso, confirme su correo electrónico desde el siguiente enlace:</p>
                 <p><a href=""{enlaceConfirmacion}"">Confirmar correo electrónico</a></p>
@@ -288,6 +397,28 @@ namespace SistemaIncidentes.Api.Controllers
             await _emailService.EnviarCorreoAsync(
                 usuario.Correo,
                 "Confirmación de correo - Sistema de Incidentes UTO",
+                contenido
+            );
+        }
+
+        private async Task EnviarCorreoResetPasswordAsync(Usuario usuario)
+        {
+            var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
+            var enlaceReset = $"{frontendUrl}/reset-password?token={Uri.EscapeDataString(usuario.TokenResetPassword ?? string.Empty)}";
+
+            var contenido = $@"
+                <h2>Restablecimiento de contraseña</h2>
+                <p>Hola {EscaparHtml(usuario.NombreCompleto)},</p>
+                <p>Se recibió una solicitud para restablecer la contraseña de su cuenta en el Sistema de Gestión de Incidentes Tecnológicos UTO.</p>
+                <p>Para crear una nueva contraseña, utilice el siguiente enlace:</p>
+                <p><a href=""{enlaceReset}"">Restablecer contraseña</a></p>
+                <p>Este enlace vencerá en 1 hora.</p>
+                <p>Si usted no solicitó este cambio, puede ignorar este mensaje. Su contraseña actual seguirá siendo válida.</p>
+            ";
+
+            await _emailService.EnviarCorreoAsync(
+                usuario.Correo,
+                "Restablecimiento de contraseña - Sistema de Incidentes UTO",
                 contenido
             );
         }
@@ -344,6 +475,11 @@ namespace SistemaIncidentes.Api.Controllers
                     Rol = usuario.Rol?.Nombre ?? "SinRol"
                 }
             };
+        }
+
+        private static string EscaparHtml(string valor)
+        {
+            return System.Net.WebUtility.HtmlEncode(valor);
         }
     }
 }
