@@ -36,18 +36,12 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(usuarioIdClaim))
             {
-                return Unauthorized(new
-                {
-                    mensaje = "No se pudo identificar al usuario autenticado."
-                });
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
             }
 
             if (!int.TryParse(usuarioIdClaim, out int usuarioId))
             {
-                return Unauthorized(new
-                {
-                    mensaje = "El identificador del usuario no es válido."
-                });
+                return Unauthorized(new { mensaje = "El identificador del usuario no es válido." });
             }
 
             var usuario = await _context.Usuarios
@@ -67,10 +61,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (usuario == null)
             {
-                return NotFound(new
-                {
-                    mensaje = "Usuario no encontrado o inactivo."
-                });
+                return NotFound(new { mensaje = "Usuario no encontrado o inactivo." });
             }
 
             return Ok(usuario);
@@ -138,12 +129,7 @@ namespace SistemaIncidentes.Api.Controllers
             return Ok(new
             {
                 total = usuarios.Count,
-                filtrosAplicados = new
-                {
-                    rol,
-                    activo,
-                    busqueda
-                },
+                filtrosAplicados = new { rol, activo, busqueda },
                 usuarios
             });
         }
@@ -160,11 +146,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             string correoNormalizado = dto.Correo.Trim().ToLower();
@@ -174,10 +156,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (correoExiste)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Ya existe un usuario registrado con ese correo."
-                });
+                return BadRequest(new { mensaje = "Ya existe un usuario registrado con ese correo." });
             }
 
             var rol = await _context.Roles
@@ -185,10 +164,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (rol == null)
             {
-                return BadRequest(new
-                {
-                    mensaje = "El rol seleccionado no existe o se encuentra inactivo."
-                });
+                return BadRequest(new { mensaje = "El rol seleccionado no existe o se encuentra inactivo." });
             }
 
             if (rolUsuarioActual == "Jefe DTI" && rol.Nombre == "Administrador")
@@ -237,6 +213,210 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> ActualizarUsuario(int id, [FromBody] ActualizarUsuarioDto dto)
+        {
+            var datosUsuario = ObtenerDatosUsuario();
+
+            if (datosUsuario == null)
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (datosUsuario.Value.RolUsuario != "Administrador" && datosUsuario.Value.RolUsuario != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+            }
+
+            var usuario = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (usuario == null)
+            {
+                return NotFound(new { mensaje = "Usuario no encontrado." });
+            }
+
+            var nuevoRol = await _context.Roles
+                .FirstOrDefaultAsync(r => r.Id == dto.RolId && r.Activo);
+
+            if (nuevoRol == null)
+            {
+                return BadRequest(new { mensaje = "El rol seleccionado no existe o se encuentra inactivo." });
+            }
+
+            if (datosUsuario.Value.RolUsuario == "Jefe DTI")
+            {
+                if (usuario.Rol != null && usuario.Rol.Nombre == "Administrador")
+                {
+                    return Forbid();
+                }
+
+                if (nuevoRol.Nombre == "Administrador")
+                {
+                    return Forbid();
+                }
+            }
+
+            if (usuario.Id == datosUsuario.Value.UsuarioId && usuario.RolId != nuevoRol.Id)
+            {
+                return BadRequest(new { mensaje = "No puede cambiar su propio rol mientras está autenticado." });
+            }
+
+            usuario.NombreCompleto = dto.NombreCompleto.Trim();
+            usuario.Telefono = string.IsNullOrWhiteSpace(dto.Telefono) ? null : dto.Telefono.Trim();
+            usuario.RolId = nuevoRol.Id;
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            var usuarioActualizado = await _context.Usuarios
+                .Include(u => u.Rol)
+                .Where(u => u.Id == usuario.Id)
+                .Select(u => new UsuarioResponseDto
+                {
+                    Id = u.Id,
+                    NombreCompleto = u.NombreCompleto,
+                    Correo = u.Correo,
+                    Telefono = u.Telefono,
+                    Rol = u.Rol != null ? u.Rol.Nombre : "Sin rol",
+                    Activo = u.Activo,
+                    FechaCreacion = u.FechaCreacion
+                })
+                .FirstAsync();
+
+            return Ok(new
+            {
+                mensaje = "Usuario actualizado correctamente.",
+                usuario = usuarioActualizado
+            });
+        }
+
+        [HttpPut("{id:int}/estado")]
+        public async Task<IActionResult> CambiarEstadoUsuario(int id, [FromBody] CambiarEstadoUsuarioDto dto)
+        {
+            var datosUsuario = ObtenerDatosUsuario();
+
+            if (datosUsuario == null)
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (datosUsuario.Value.RolUsuario != "Administrador" && datosUsuario.Value.RolUsuario != "Jefe DTI")
+            {
+                return Forbid();
+            }
+
+            var usuario = await _context.Usuarios
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (usuario == null)
+            {
+                return NotFound(new { mensaje = "Usuario no encontrado." });
+            }
+
+            if (usuario.Id == datosUsuario.Value.UsuarioId && !dto.Activo)
+            {
+                return BadRequest(new { mensaje = "No puede desactivar su propio usuario." });
+            }
+
+            if (datosUsuario.Value.RolUsuario == "Jefe DTI" &&
+                usuario.Rol != null &&
+                usuario.Rol.Nombre == "Administrador")
+            {
+                return Forbid();
+            }
+
+            if (usuario.Rol != null && usuario.Rol.Nombre == "Administrador" && !dto.Activo)
+            {
+                int administradoresActivos = await _context.Usuarios
+                    .Include(u => u.Rol)
+                    .CountAsync(u =>
+                        u.Activo &&
+                        u.Rol != null &&
+                        u.Rol.Nombre == "Administrador");
+
+                if (administradoresActivos <= 1)
+                {
+                    return BadRequest(new { mensaje = "No se puede desactivar el último administrador activo del sistema." });
+                }
+            }
+
+            usuario.Activo = dto.Activo;
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = dto.Activo
+                    ? "Usuario activado correctamente."
+                    : "Usuario desactivado correctamente.",
+                usuario = new
+                {
+                    usuario.Id,
+                    usuario.NombreCompleto,
+                    usuario.Correo,
+                    Rol = usuario.Rol != null ? usuario.Rol.Nombre : "Sin rol",
+                    usuario.Activo
+                }
+            });
+        }
+
+        [HttpPut("cambiar-password")]
+        public async Task<IActionResult> CambiarPasswordPropia([FromBody] CambiarPasswordDto dto)
+        {
+            var datosUsuario = ObtenerDatosUsuario();
+
+            if (datosUsuario == null)
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+            }
+
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.Id == datosUsuario.Value.UsuarioId && u.Activo);
+
+            if (usuario == null)
+            {
+                return NotFound(new { mensaje = "Usuario no encontrado o inactivo." });
+            }
+
+            bool passwordActualValida = BCrypt.Net.BCrypt.Verify(dto.PasswordActual, usuario.PasswordHash);
+
+            if (!passwordActualValida)
+            {
+                return BadRequest(new { mensaje = "La contraseña actual no es correcta." });
+            }
+
+            bool nuevaPasswordIgual = BCrypt.Net.BCrypt.Verify(dto.NuevaPassword, usuario.PasswordHash);
+
+            if (nuevaPasswordIgual)
+            {
+                return BadRequest(new { mensaje = "La nueva contraseña no puede ser igual a la contraseña actual." });
+            }
+
+            usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
+            usuario.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Contraseña actualizada correctamente."
+            });
+        }
+
         [HttpPut("{id:int}/reset-password")]
         public async Task<IActionResult> ResetPassword(int id, [FromBody] ResetPasswordDto dto)
         {
@@ -249,11 +429,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!ModelState.IsValid)
             {
-                return BadRequest(new
-                {
-                    mensaje = "Los datos enviados no son válidos.",
-                    errores = ModelState
-                });
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
             }
 
             var usuario = await _context.Usuarios
@@ -262,18 +438,12 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (usuario == null)
             {
-                return NotFound(new
-                {
-                    mensaje = "Usuario no encontrado."
-                });
+                return NotFound(new { mensaje = "Usuario no encontrado." });
             }
 
             if (usuario.Rol == null)
             {
-                return BadRequest(new
-                {
-                    mensaje = "El usuario no tiene un rol válido asignado."
-                });
+                return BadRequest(new { mensaje = "El usuario no tiene un rol válido asignado." });
             }
 
             if (rolUsuarioActual == "Jefe DTI" && usuario.Rol.Nombre == "Administrador")
@@ -283,10 +453,7 @@ namespace SistemaIncidentes.Api.Controllers
 
             if (!usuario.Activo)
             {
-                return BadRequest(new
-                {
-                    mensaje = "No se puede reiniciar la contraseña de un usuario inactivo."
-                });
+                return BadRequest(new { mensaje = "No se puede reiniciar la contraseña de un usuario inactivo." });
             }
 
             usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
@@ -306,6 +473,19 @@ namespace SistemaIncidentes.Api.Controllers
                     usuario.Activo
                 }
             });
+        }
+
+        private (int UsuarioId, string? RolUsuario)? ObtenerDatosUsuario()
+        {
+            var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            {
+                return null;
+            }
+
+            return (usuarioId, rolUsuario);
         }
 
         private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)

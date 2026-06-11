@@ -14,6 +14,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
+// Configuración CORS para frontend
+var frontendUrl = builder.Configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendPolicy", policy =>
+    {
+        policy
+            .WithOrigins(frontendUrl)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 // Configuración de correo
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -123,6 +137,8 @@ app.MapGet("/", () => new
 
 // Middleware base
 app.UseHttpsRedirection();
+
+app.UseCors("FrontendPolicy");
 
 app.UseAuthentication();
 app.UseAuthorization();
