@@ -1,82 +1,103 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getUsuario, logout } from "@/lib/auth";
-import type { UsuarioAutenticado } from "@/types/auth";
+import AppLayout from "@/components/AppLayout";
+import { getUsuario } from "@/lib/auth";
+import {
+  ClipboardList,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null);
-
-  useEffect(() => {
-    const usuarioActual = getUsuario();
-
-    if (!usuarioActual) {
-      router.push("/login");
-      return;
-    }
-
-    setUsuario(usuarioActual);
-  }, [router]);
-
-  function cerrarSesion() {
-    logout();
-    router.push("/login");
-  }
-
-  if (!usuario) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-100">
-        <p className="text-slate-600">Cargando...</p>
-      </main>
-    );
-  }
+  const usuario = getUsuario();
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
-      <section className="max-w-5xl mx-auto bg-white rounded-2xl shadow p-8">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Dashboard UTO
-            </h1>
-            <p className="text-slate-500 mt-1">
-              Sesión iniciada correctamente.
-            </p>
-          </div>
-
-          <button
-            onClick={cerrarSesion}
-            className="rounded-lg bg-red-600 px-4 py-2 text-white font-medium hover:bg-red-700"
-          >
-            Cerrar sesión
-          </button>
+    <AppLayout>
+      <section className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">
+            Bienvenido, {usuario?.nombreCompleto}. Este será el panel principal
+            del sistema.
+          </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 p-5">
-            <p className="text-sm text-slate-500">Usuario</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {usuario.nombreCompleto}
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">Tickets totales</p>
+              <ClipboardList className="h-5 w-5 text-blue-600" />
+            </div>
+            <p className="text-3xl font-bold text-slate-900 mt-4">--</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Pendiente de conectar al API
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 p-5">
-            <p className="text-sm text-slate-500">Correo</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {usuario.correo}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">En proceso</p>
+              <Clock className="h-5 w-5 text-amber-600" />
+            </div>
+            <p className="text-3xl font-bold text-slate-900 mt-4">--</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Pendiente de conectar al API
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 p-5">
-            <p className="text-sm text-slate-500">Rol</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {usuario.rol}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">Fuera de SLA</p>
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
+            <p className="text-3xl font-bold text-slate-900 mt-4">--</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Pendiente de conectar al API
             </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">Cerrados</p>
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            </div>
+            <p className="text-3xl font-bold text-slate-900 mt-4">--</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Pendiente de conectar al API
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900">
+            Información de sesión
+          </h2>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm text-slate-500">Usuario</p>
+              <p className="font-semibold text-slate-900 mt-1">
+                {usuario?.nombreCompleto}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm text-slate-500">Correo</p>
+              <p className="font-semibold text-slate-900 mt-1">
+                {usuario?.correo}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="text-sm text-slate-500">Rol</p>
+              <p className="font-semibold text-slate-900 mt-1">
+                {usuario?.rol}
+              </p>
+            </div>
           </div>
         </div>
       </section>
-    </main>
+    </AppLayout>
   );
 }
