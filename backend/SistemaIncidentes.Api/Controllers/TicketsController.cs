@@ -749,6 +749,124 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        [HttpPut("{id:int}/reclasificar")]
+        public async Task<IActionResult> ReclasificarTicket(int id, [FromBody] ReclasificarTicketDto dto)
+        {
+            var datosUsuario = ObtenerDatosUsuario();
+
+            if (datosUsuario == null)
+            {
+                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
+            }
+
+            var ticket = await _context.Tickets
+                .Include(t => t.UsuarioSolicitante)
+                .Include(t => t.TecnicoAsignado)
+                .Include(t => t.EstadoTicket)
+                .Include(t => t.Categoria)
+                .Include(t => t.Prioridad)
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (ticket == null)
+            {
+                return NotFound(new { mensaje = "Ticket no encontrado." });
+            }
+
+            bool esTecnicoAsignado = ticket.TecnicoAsignadoId == datosUsuario.Value.UsuarioId;
+            bool esAdministradorOJefe = datosUsuario.Value.RolUsuario == "Administrador" || datosUsuario.Value.RolUsuario == "Jefe DTI";
+
+            if (!esTecnicoAsignado && !esAdministradorOJefe)
+            {
+                return Forbid();
+            }
+
+            if (ticket.EstadoTicket == null)
+            {
+                return StatusCode(500, new { mensaje = "El ticket no tiene un estado válido asociado." });
+            }
+
+            if (ticket.EstadoTicket.Nombre == "Cerrado" || ticket.EstadoTicket.Nombre == "Cancelado")
+            {
+                return BadRequest(new { mensaje = "No se puede reclasificar un ticket cerrado o cancelado." });
+            }
+
+            var nuevaPrioridad = await ObtenerPrioridadAsync(dto.Impacto, dto.Urgencia);
+
+            if (nuevaPrioridad == null)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No fue posible calcular la prioridad. Verifique que el impacto y la urgencia sean válidos.",
+                    valoresPermitidos = new
+                    {
+                        impacto = new[] { "Bajo", "Medio", "Alto" },
+                        urgencia = new[] { "Baja", "Media", "Alta" }
+                    }
+                });
+            }
+
+            string impactoAnterior = ticket.Impacto;
+            string urgenciaAnterior = ticket.Urgencia;
+            string prioridadAnterior = ticket.Prioridad != null ? ticket.Prioridad.Nombre : "Sin prioridad";
+
+            string impactoNuevo = NormalizarTexto(dto.Impacto);
+            string urgenciaNueva = NormalizarTexto(dto.Urgencia);
+
+            bool sinCambios =
+                impactoAnterior == impactoNuevo &&
+                urgenciaAnterior == urgenciaNueva &&
+                ticket.PrioridadId == nuevaPrioridad.Id;
+
+            if (sinCambios)
+            {
+                return BadRequest(new { mensaje = "La clasificación enviada es igual a la clasificación actual del ticket." });
+            }
+
+            ticket.Impacto = impactoNuevo;
+            ticket.Urgencia = urgenciaNueva;
+            ticket.PrioridadId = nuevaPrioridad.Id;
+
+            await RegistrarBitacoraAsync(
+                ticket.Id,
+                datosUsuario.Value.UsuarioId,
+                "Ticket reclasificado",
+                $"El ticket fue reclasificado. Impacto anterior: {impactoAnterior}, urgencia anterior: {urgenciaAnterior}, prioridad anterior: {prioridadAnterior}. " +
+                $"Nuevo impacto: {ticket.Impacto}, nueva urgencia: {ticket.Urgencia}, nueva prioridad: {nuevaPrioridad.Nombre}. " +
+                $"Motivo: {dto.MotivoReclasificacion.Trim()}");
+
+            await _context.SaveChangesAsync();
+
+            if (ticket.UsuarioSolicitante != null)
+            {
+                await EnviarCorreoSeguroAsync(
+                    ticket.UsuarioSolicitante.Correo,
+                    $"Ticket #{ticket.Id} reclasificado - {ticket.Titulo}",
+                    CrearCorreoTicketReclasificado(
+                        ticket.UsuarioSolicitante.NombreCompleto,
+                        ticket,
+                        impactoAnterior,
+                        urgenciaAnterior,
+                        prioridadAnterior,
+                        nuevaPrioridad.Nombre,
+                        dto.MotivoReclasificacion.Trim()),
+                    ticket.Id,
+                    "Error notificación reclasificación");
+            }
+
+            var ticketActualizado = await ObtenerTicketResponsePorIdAsync(ticket.Id);
+
+            return Ok(new
+            {
+                mensaje = "Ticket reclasificado correctamente.",
+                ticket = ticketActualizado
+            });
+        }
+
         [HttpPut("{id:int}/escalar")]
         public async Task<IActionResult> EscalarTicket(int id, [FromBody] EscalarTicketDto dto)
         {
@@ -1639,6 +1757,32 @@ namespace SistemaIncidentes.Api.Controllers
                     <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
                     <p><strong>Nuevo estado:</strong> {EscaparHtml(estado)}</p>
                     {(string.IsNullOrWhiteSpace(detalle) ? string.Empty : $"<p><strong>Detalle:</strong> {EscaparHtml(detalle)}</p>")}
+                ");
+        }
+
+        private static string CrearCorreoTicketReclasificado(
+            string nombreSolicitante,
+            Ticket ticket,
+            string impactoAnterior,
+            string urgenciaAnterior,
+            string prioridadAnterior,
+            string nuevaPrioridad,
+            string motivo)
+        {
+            return CrearPlantillaCorreo(
+                "Ticket reclasificado",
+                nombreSolicitante,
+                $@"
+                    <p>La clasificación de su ticket fue revisada por el equipo de soporte.</p>
+                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
+                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
+                    <p><strong>Impacto anterior:</strong> {EscaparHtml(impactoAnterior)}</p>
+                    <p><strong>Urgencia anterior:</strong> {EscaparHtml(urgenciaAnterior)}</p>
+                    <p><strong>Prioridad anterior:</strong> {EscaparHtml(prioridadAnterior)}</p>
+                    <p><strong>Nuevo impacto:</strong> {EscaparHtml(ticket.Impacto)}</p>
+                    <p><strong>Nueva urgencia:</strong> {EscaparHtml(ticket.Urgencia)}</p>
+                    <p><strong>Nueva prioridad:</strong> {EscaparHtml(nuevaPrioridad)}</p>
+                    <p><strong>Motivo de reclasificación:</strong> {EscaparHtml(motivo)}</p>
                 ");
         }
 
