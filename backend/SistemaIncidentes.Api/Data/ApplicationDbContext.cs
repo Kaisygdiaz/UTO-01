@@ -19,6 +19,7 @@ namespace SistemaIncidentes.Api.Data
         public DbSet<BitacoraAuditoria> BitacoraAuditoria => Set<BitacoraAuditoria>();
         public DbSet<ComentarioTicket> ComentariosTicket => Set<ComentarioTicket>();
         public DbSet<AdjuntoTicket> AdjuntosTicket => Set<AdjuntoTicket>();
+        public DbSet<NotificacionSla> NotificacionesSla => Set<NotificacionSla>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -476,6 +477,53 @@ namespace SistemaIncidentes.Api.Data
                     .WithMany()
                     .HasForeignKey(a => a.UsuarioId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<NotificacionSla>(entity =>
+            {
+                entity.ToTable("notificaciones_sla");
+
+                entity.HasKey(n => n.Id);
+
+                entity.Property(n => n.Id)
+                    .HasColumnName("id");
+
+                entity.Property(n => n.TicketId)
+                    .HasColumnName("ticket_id")
+                    .IsRequired();
+
+                entity.Property(n => n.TipoAlerta)
+                    .HasColumnName("tipo_alerta")
+                    .HasMaxLength(80)
+                    .IsRequired();
+
+                entity.Property(n => n.DestinatarioCorreo)
+                    .HasColumnName("destinatario_correo")
+                    .HasMaxLength(120)
+                    .IsRequired();
+
+                entity.Property(n => n.DestinatarioNombre)
+                    .HasColumnName("destinatario_nombre")
+                    .HasMaxLength(150)
+                    .IsRequired();
+
+                entity.Property(n => n.FechaEnvio)
+                    .HasColumnName("fecha_envio")
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .IsRequired();
+
+                entity.HasIndex(n => new
+                    {
+                        n.TicketId,
+                        n.TipoAlerta,
+                        n.DestinatarioCorreo
+                    })
+                    .IsUnique();
+
+                entity.HasOne(n => n.Ticket)
+                    .WithMany()
+                    .HasForeignKey(n => n.TicketId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

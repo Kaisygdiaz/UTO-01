@@ -18,6 +18,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Configuración de alertas SLA automáticas
+builder.Services.Configure<SlaSettings>(builder.Configuration.GetSection("SlaSettings"));
+builder.Services.AddHostedService<SlaNotificationBackgroundService>();
+
 // Configuración de Swagger con soporte para JWT
 builder.Services.AddSwaggerGen(options =>
 {
