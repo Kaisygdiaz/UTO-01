@@ -17,6 +17,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Servicio de comentarios de tickets
+builder.Services.AddScoped<ITicketComentarioService, TicketComentarioService>();
+
 builder.Services.Configure<SlaSettings>(builder.Configuration.GetSection("SlaSettings"));
 builder.Services.AddHostedService<SlaNotificationBackgroundService>();
 

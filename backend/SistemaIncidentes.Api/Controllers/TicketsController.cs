@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -18,15 +19,18 @@ namespace SistemaIncidentes.Api.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IEmailService _emailService;
+        private readonly ITicketComentarioService _comentarioService;
         private readonly ILogger<TicketsController> _logger;
 
         public TicketsController(
             ApplicationDbContext context,
             IEmailService emailService,
+            ITicketComentarioService comentarioService,
             ILogger<TicketsController> logger)
         {
             _context = context;
             _emailService = emailService;
+            _comentarioService = comentarioService;
             _logger = logger;
         }
 
@@ -510,156 +514,22 @@ namespace SistemaIncidentes.Api.Controllers
         [HttpGet("{id:int}/comentarios")]
         public async Task<IActionResult> ObtenerComentariosTicket(int id)
         {
-            var datosUsuario = ObtenerDatosUsuario();
+            var resultado = await _comentarioService.ObtenerComentariosAsync(id, User);
 
-            if (datosUsuario == null)
-            {
-                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
-            }
-
-            var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id);
-
-            if (ticket == null)
-            {
-                return NotFound(new { mensaje = "Ticket no encontrado." });
-            }
-
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
-            {
-                return Forbid();
-            }
-
-            var queryComentarios = _context.ComentariosTicket
-                .Include(c => c.Usuario)
-                .ThenInclude(u => u!.Rol)
-                .Where(c => c.TicketId == id)
-                .AsQueryable();
-
-            if (datosUsuario.Value.RolUsuario == "Solicitante")
-            {
-                queryComentarios = queryComentarios.Where(c => !c.EsInterno);
-            }
-
-            var comentarios = await queryComentarios
-                .OrderBy(c => c.FechaRegistro)
-                .Select(c => new ComentarioTicketResponseDto
-                {
-                    Id = c.Id,
-                    TicketId = c.TicketId,
-                    Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
-                    Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
-                    Comentario = c.Comentario,
-                    EsInterno = c.EsInterno,
-                    TipoComentario = c.EsInterno ? "Interno" : "Público",
-                    FechaRegistro = c.FechaRegistro
-                })
-                .ToListAsync();
-
-            return Ok(comentarios);
+            return CrearRespuestaServicioComentarios(resultado);
         }
 
         [HttpPost("{id:int}/comentarios")]
         public async Task<IActionResult> CrearComentarioTicket(int id, [FromBody] CrearComentarioTicketDto dto)
         {
-            var datosUsuario = ObtenerDatosUsuario();
+            var resultado = await _comentarioService.CrearComentarioAsync(id, dto, User, ModelState.IsValid);
 
-            if (datosUsuario == null)
+            if (resultado.Creado && resultado.TicketId.HasValue)
             {
-                return Unauthorized(new { mensaje = "No se pudo identificar al usuario autenticado." });
+                return CreatedAtAction(nameof(ObtenerComentariosTicket), new { id = resultado.TicketId.Value }, resultado.Respuesta);
             }
 
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { mensaje = "Los datos enviados no son válidos.", errores = ModelState });
-            }
-
-            if (datosUsuario.Value.RolUsuario == "Solicitante" && dto.EsInterno)
-            {
-                return BadRequest(new { mensaje = "El solicitante no puede crear comentarios internos." });
-            }
-
-            var usuarioComentario = await _context.Usuarios
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.Id == datosUsuario.Value.UsuarioId && u.Activo);
-
-            if (usuarioComentario == null)
-            {
-                return Unauthorized(new { mensaje = "Usuario no encontrado o inactivo." });
-            }
-
-            var ticket = await _context.Tickets
-                .Include(t => t.UsuarioSolicitante)
-                .Include(t => t.TecnicoAsignado)
-                .Include(t => t.EstadoTicket)
-                .Include(t => t.Categoria)
-                .Include(t => t.Prioridad)
-                .FirstOrDefaultAsync(t => t.Id == id);
-
-            if (ticket == null)
-            {
-                return NotFound(new { mensaje = "Ticket no encontrado." });
-            }
-
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
-            {
-                return Forbid();
-            }
-
-            if (ticket.EstadoTicket == null)
-            {
-                return StatusCode(500, new { mensaje = "El ticket no tiene un estado válido asociado." });
-            }
-
-            if (!EstadoPermiteComentarios(ticket.EstadoTicket.Nombre))
-            {
-                return BadRequest(new { mensaje = "No se pueden agregar comentarios a tickets cerrados o cancelados." });
-            }
-
-            var comentario = new ComentarioTicket
-            {
-                TicketId = ticket.Id,
-                UsuarioId = datosUsuario.Value.UsuarioId,
-                Comentario = dto.Comentario.Trim(),
-                EsInterno = dto.EsInterno,
-                FechaRegistro = DateTime.UtcNow
-            };
-
-            await _context.ComentariosTicket.AddAsync(comentario);
-
-            string tipoComentario = comentario.EsInterno ? "interno" : "público";
-
-            var detalleComentarioBitacora =
-                $"Se agregó un comentario {tipoComentario} al ticket. " +
-                $"Comentario: \"{comentario.Comentario}\"";
-
-            await RegistrarBitacoraAsync(
-                ticket.Id,
-                datosUsuario.Value.UsuarioId,
-                comentario.EsInterno ? "Comentario interno agregado" : "Comentario público agregado",
-                detalleComentarioBitacora);
-
-            await _context.SaveChangesAsync();
-
-            await NotificarComentarioAsync(ticket, comentario, usuarioComentario);
-
-            var comentarioCreado = await _context.ComentariosTicket
-                .Include(c => c.Usuario)
-                .ThenInclude(u => u!.Rol)
-                .Where(c => c.Id == comentario.Id)
-                .Select(c => new ComentarioTicketResponseDto
-                {
-                    Id = c.Id,
-                    TicketId = c.TicketId,
-                    Usuario = c.Usuario != null ? c.Usuario.NombreCompleto : string.Empty,
-                    Rol = c.Usuario != null && c.Usuario.Rol != null ? c.Usuario.Rol.Nombre : string.Empty,
-                    Comentario = c.Comentario,
-                    EsInterno = c.EsInterno,
-                    TipoComentario = c.EsInterno ? "Interno" : "Público",
-                    FechaRegistro = c.FechaRegistro
-                })
-                .FirstAsync();
-
-            return CreatedAtAction(nameof(ObtenerComentariosTicket), new { id = ticket.Id }, comentarioCreado);
+            return CrearRespuestaServicioComentarios(resultado);
         }
 
         [HttpPut("{id:int}/asignar")]
@@ -1360,6 +1230,20 @@ namespace SistemaIncidentes.Api.Controllers
             });
         }
 
+        private IActionResult CrearRespuestaServicioComentarios(ComentarioOperacionResultado resultado)
+        {
+            return resultado.CodigoEstado switch
+            {
+                StatusCodes.Status200OK => Ok(resultado.Respuesta),
+                StatusCodes.Status400BadRequest => BadRequest(resultado.Respuesta),
+                StatusCodes.Status401Unauthorized => Unauthorized(resultado.Respuesta),
+                StatusCodes.Status403Forbidden => Forbid(),
+                StatusCodes.Status404NotFound => NotFound(resultado.Respuesta),
+                StatusCodes.Status500InternalServerError => StatusCode(StatusCodes.Status500InternalServerError, resultado.Respuesta),
+                _ => StatusCode(resultado.CodigoEstado, resultado.Respuesta)
+            };
+        }
+
         private (int UsuarioId, string? RolUsuario)? ObtenerDatosUsuario()
         {
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -1552,91 +1436,6 @@ namespace SistemaIncidentes.Api.Controllers
                 "baja" => "Baja",
                 _ => valor
             };
-        }
-
-        private async Task NotificarComentarioAsync(Ticket ticket, ComentarioTicket comentario, Usuario usuarioComentario)
-        {
-            string rolComentario = usuarioComentario.Rol?.Nombre ?? string.Empty;
-
-            var destinatarios = new List<Usuario>();
-
-            if (comentario.EsInterno)
-            {
-                if ((rolComentario == "Administrador" || rolComentario == "Jefe DTI") &&
-                    ticket.TecnicoAsignado != null &&
-                    ticket.TecnicoAsignado.Id != usuarioComentario.Id)
-                {
-                    destinatarios.Add(ticket.TecnicoAsignado);
-                }
-
-                if (rolComentario == "Técnico")
-                {
-                    var jefesDti = await _context.Usuarios
-                        .Include(u => u.Rol)
-                        .Where(u =>
-                            u.Activo &&
-                            u.Rol != null &&
-                            u.Rol.Nombre == "Jefe DTI" &&
-                            u.Id != usuarioComentario.Id)
-                        .ToListAsync();
-
-                    destinatarios.AddRange(jefesDti);
-                }
-            }
-            else
-            {
-                if (rolComentario == "Solicitante")
-                {
-                    if (ticket.TecnicoAsignado != null &&
-                        ticket.TecnicoAsignado.Id != usuarioComentario.Id)
-                    {
-                        destinatarios.Add(ticket.TecnicoAsignado);
-                    }
-                }
-                else if (rolComentario == "Técnico")
-                {
-                    if (ticket.UsuarioSolicitante != null &&
-                        ticket.UsuarioSolicitante.Id != usuarioComentario.Id)
-                    {
-                        destinatarios.Add(ticket.UsuarioSolicitante);
-                    }
-                }
-                else if (rolComentario == "Administrador" || rolComentario == "Jefe DTI")
-                {
-                    if (ticket.UsuarioSolicitante != null &&
-                        ticket.UsuarioSolicitante.Id != usuarioComentario.Id)
-                    {
-                        destinatarios.Add(ticket.UsuarioSolicitante);
-                    }
-
-                    if (ticket.TecnicoAsignado != null &&
-                        ticket.TecnicoAsignado.Id != usuarioComentario.Id)
-                    {
-                        destinatarios.Add(ticket.TecnicoAsignado);
-                    }
-                }
-            }
-
-            var destinatariosUnicos = destinatarios
-                .Where(d => !string.IsNullOrWhiteSpace(d.Correo))
-                .GroupBy(d => d.Correo.ToLower())
-                .Select(g => g.First())
-                .ToList();
-
-            foreach (var destinatario in destinatariosUnicos)
-            {
-                await EnviarCorreoSeguroAsync(
-                    destinatario.Correo,
-                    $"Nuevo comentario en ticket #{ticket.Id} - {ticket.Titulo}",
-                    TicketEmailTemplateBuilder.CrearCorreoComentario(
-                        destinatario.NombreCompleto,
-                        ticket,
-                        comentario,
-                        usuarioComentario.NombreCompleto,
-                        rolComentario),
-                    ticket.Id,
-                    "Error notificación comentario");
-            }
         }
 
         private async Task EnviarCorreoSeguroAsync(
