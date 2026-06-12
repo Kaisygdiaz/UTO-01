@@ -7,6 +7,7 @@ import type { TicketListado } from "@/types/tickets";
 export function useTickets() {
   const [tickets, setTickets] = useState<TicketListado[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState("Todos");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
@@ -29,25 +30,37 @@ export function useTickets() {
     cargarTickets();
   }, []);
 
+  const estadosDisponibles = useMemo(() => {
+    const estados = tickets.map((ticket) => ticket.estado);
+    return ["Todos", ...Array.from(new Set(estados))];
+  }, [tickets]);
+
   const ticketsFiltrados = useMemo(() => {
     const texto = busqueda.toLowerCase();
 
     return tickets.filter((ticket) => {
-      return (
+      const coincideBusqueda =
         ticket.titulo.toLowerCase().includes(texto) ||
         ticket.descripcion.toLowerCase().includes(texto) ||
         ticket.estado.toLowerCase().includes(texto) ||
         ticket.prioridad.toLowerCase().includes(texto) ||
         ticket.categoria.toLowerCase().includes(texto) ||
         ticket.solicitante.toLowerCase().includes(texto) ||
-        ticket.tecnicoAsignado.toLowerCase().includes(texto)
-      );
+        ticket.tecnicoAsignado.toLowerCase().includes(texto);
+
+      const coincideEstado =
+        estadoSeleccionado === "Todos" || ticket.estado === estadoSeleccionado;
+
+      return coincideBusqueda && coincideEstado;
     });
-  }, [tickets, busqueda]);
+  }, [tickets, busqueda, estadoSeleccionado]);
 
   return {
     tickets,
     ticketsFiltrados,
+    estadosDisponibles,
+    estadoSeleccionado,
+    setEstadoSeleccionado,
     busqueda,
     setBusqueda,
     cargando,

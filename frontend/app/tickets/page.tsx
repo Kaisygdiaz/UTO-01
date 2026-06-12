@@ -3,14 +3,17 @@
 import AppLayout from "@/components/AppLayout";
 import Card from "@/components/ui/Card";
 import TicketsContent from "@/components/tickets/TicketsContent";
+import TicketsFilters from "@/components/tickets/TicketsFilters";
 import TicketsHeader from "@/components/tickets/TicketsHeader";
-import TicketsSearchBar from "@/components/tickets/TicketsSearchBar";
 import { useTickets } from "@/hooks/useTickets";
 
 export default function TicketsPage() {
   const {
     tickets,
     ticketsFiltrados,
+    estadosDisponibles,
+    estadoSeleccionado,
+    setEstadoSeleccionado,
     busqueda,
     setBusqueda,
     cargando,
@@ -23,9 +26,12 @@ export default function TicketsPage() {
         <TicketsHeader />
 
         <Card>
-          <TicketsSearchBar
+          <TicketsFilters
             busqueda={busqueda}
             setBusqueda={setBusqueda}
+            estadosDisponibles={estadosDisponibles}
+            estadoSeleccionado={estadoSeleccionado}
+            setEstadoSeleccionado={setEstadoSeleccionado}
             totalFiltrados={ticketsFiltrados.length}
             totalTickets={tickets.length}
           />

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SistemaIncidentes.Api.Data;
 using SistemaIncidentes.Api.DTOs;
+using SistemaIncidentes.Api.Helpers.Tickets;
 using SistemaIncidentes.Api.Models;
 using SistemaIncidentes.Api.Services;
 
@@ -118,7 +119,7 @@ namespace SistemaIncidentes.Api.Controllers
                 .ToListAsync();
 
             var tickets = ticketsEntidad
-                .Select(CrearTicketResponse)
+                .Select(TicketResponseMapper.ToResponseDto)
                 .ToList();
 
             return Ok(new
@@ -410,7 +411,7 @@ namespace SistemaIncidentes.Api.Controllers
             await EnviarCorreoSeguroAsync(
                 usuario.Correo,
                 $"Ticket #{ticket.Id} registrado - {ticket.Titulo}",
-                CrearCorreoTicketCreado(usuario.NombreCompleto, ticket, categoria.Nombre, prioridad.Nombre),
+                TicketEmailTemplateBuilder.CrearCorreoTicketCreado(usuario.NombreCompleto, ticket, categoria.Nombre, prioridad.Nombre),
                 ticket.Id,
                 "Error notificación creación");
 
@@ -458,7 +459,7 @@ namespace SistemaIncidentes.Api.Controllers
                 return NotFound(new { mensaje = "Ticket no encontrado o no tiene permisos para consultarlo." });
             }
 
-            return Ok(CrearTicketResponse(ticketEntidad));
+            return Ok(TicketResponseMapper.ToResponseDto(ticketEntidad));
         }
 
         [HttpGet("{id:int}/bitacora")]
@@ -627,11 +628,15 @@ namespace SistemaIncidentes.Api.Controllers
 
             string tipoComentario = comentario.EsInterno ? "interno" : "público";
 
+            var detalleComentarioBitacora =
+                $"Se agregó un comentario {tipoComentario} al ticket. " +
+                $"Comentario: \"{comentario.Comentario}\"";
+
             await RegistrarBitacoraAsync(
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 comentario.EsInterno ? "Comentario interno agregado" : "Comentario público agregado",
-                $"Se agregó un comentario {tipoComentario} al ticket.");
+                detalleComentarioBitacora);
 
             await _context.SaveChangesAsync();
 
@@ -736,7 +741,7 @@ namespace SistemaIncidentes.Api.Controllers
             await EnviarCorreoSeguroAsync(
                 tecnico.Correo,
                 $"Ticket #{ticket.Id} asignado - {ticket.Titulo}",
-                CrearCorreoTicketAsignado(tecnico.NombreCompleto, ticket),
+                TicketEmailTemplateBuilder.CrearCorreoTicketAsignado(tecnico.NombreCompleto, ticket),
                 ticket.Id,
                 "Error notificación asignación");
 
@@ -846,7 +851,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} reclasificado - {ticket.Titulo}",
-                    CrearCorreoTicketReclasificado(
+                    TicketEmailTemplateBuilder.CrearCorreoTicketReclasificado(
                         ticket.UsuarioSolicitante.NombreCompleto,
                         ticket,
                         impactoAnterior,
@@ -968,7 +973,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} escalado - {ticket.Titulo}",
-                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Escalado", ticket.MotivoEscalamiento),
+                    TicketEmailTemplateBuilder.CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Escalado", ticket.MotivoEscalamiento),
                     ticket.Id,
                     "Error notificación escalamiento");
             }
@@ -1068,7 +1073,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} cancelado - {ticket.Titulo}",
-                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cancelado", ticket.MotivoCancelacion),
+                    TicketEmailTemplateBuilder.CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cancelado", ticket.MotivoCancelacion),
                     ticket.Id,
                     "Error notificación cancelación");
             }
@@ -1177,7 +1182,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} reabierto - {ticket.Titulo}",
-                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Abierto", ticket.MotivoReapertura),
+                    TicketEmailTemplateBuilder.CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Abierto", ticket.MotivoReapertura),
                     ticket.Id,
                     "Error notificación reapertura");
             }
@@ -1258,7 +1263,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} resuelto - {ticket.Titulo}",
-                    CrearCorreoTicketResuelto(ticket.UsuarioSolicitante.NombreCompleto, ticket),
+                    TicketEmailTemplateBuilder.CrearCorreoTicketResuelto(ticket.UsuarioSolicitante.NombreCompleto, ticket),
                     ticket.Id,
                     "Error notificación resolución");
             }
@@ -1341,7 +1346,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     ticket.UsuarioSolicitante.Correo,
                     $"Ticket #{ticket.Id} cerrado - {ticket.Titulo}",
-                    CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cerrado", ticket.ComentarioCierre),
+                    TicketEmailTemplateBuilder.CrearCorreoCambioEstado(ticket.UsuarioSolicitante.NombreCompleto, ticket, "Cerrado", ticket.ComentarioCierre),
                     ticket.Id,
                     "Error notificación cierre");
             }
@@ -1406,37 +1411,7 @@ namespace SistemaIncidentes.Api.Controllers
                 .Include(t => t.Prioridad)
                 .FirstAsync(t => t.Id == ticketId);
 
-            return CrearTicketResponse(ticket);
-        }
-
-        private static TicketResponseDto CrearTicketResponse(Ticket t)
-        {
-            return new TicketResponseDto
-            {
-                Id = t.Id,
-                Titulo = t.Titulo,
-                Descripcion = t.Descripcion,
-                Solucion = t.Solucion,
-                ComentarioCierre = t.ComentarioCierre,
-                CalificacionSatisfaccion = t.CalificacionSatisfaccion,
-                MotivoEscalamiento = t.MotivoEscalamiento,
-                FechaEscalamiento = t.FechaEscalamiento,
-                MotivoCancelacion = t.MotivoCancelacion,
-                FechaCancelacion = t.FechaCancelacion,
-                MotivoReapertura = t.MotivoReapertura,
-                FechaReapertura = t.FechaReapertura,
-                Impacto = t.Impacto,
-                Urgencia = t.Urgencia,
-                Categoria = t.Categoria != null ? t.Categoria.Nombre : string.Empty,
-                Estado = t.EstadoTicket != null ? t.EstadoTicket.Nombre : string.Empty,
-                Prioridad = t.Prioridad != null ? t.Prioridad.Nombre : string.Empty,
-                UsuarioSolicitante = t.UsuarioSolicitante != null ? t.UsuarioSolicitante.NombreCompleto : string.Empty,
-                TecnicoAsignado = t.TecnicoAsignado != null ? t.TecnicoAsignado.NombreCompleto : null,
-                FechaCreacion = t.FechaCreacion,
-                FechaPrimeraRespuesta = t.FechaPrimeraRespuesta,
-                FechaResolucion = t.FechaResolucion,
-                FechaCierre = t.FechaCierre
-            };
+            return TicketResponseMapper.ToResponseDto(ticket);
         }
 
         private async Task RegistrarBitacoraAsync(int ticketId, int usuarioId, string accion, string? detalle)
@@ -1653,7 +1628,7 @@ namespace SistemaIncidentes.Api.Controllers
                 await EnviarCorreoSeguroAsync(
                     destinatario.Correo,
                     $"Nuevo comentario en ticket #{ticket.Id} - {ticket.Titulo}",
-                    CrearCorreoComentario(
+                    TicketEmailTemplateBuilder.CrearCorreoComentario(
                         destinatario.NombreCompleto,
                         ticket,
                         comentario,
@@ -1686,131 +1661,6 @@ namespace SistemaIncidentes.Api.Controllers
             }
         }
 
-        private static string CrearCorreoTicketCreado(string nombreSolicitante, Ticket ticket, string categoria, string prioridad)
-        {
-            return CrearPlantillaCorreo(
-                "Ticket registrado correctamente",
-                nombreSolicitante,
-                $@"
-                    <p>Su ticket fue registrado correctamente en la mesa de ayuda.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Categoría:</strong> {EscaparHtml(categoria)}</p>
-                    <p><strong>Prioridad:</strong> {EscaparHtml(prioridad)}</p>
-                    <p><strong>Estado actual:</strong> Abierto</p>
-                ");
-        }
 
-        private static string CrearCorreoTicketAsignado(string nombreTecnico, Ticket ticket)
-        {
-            return CrearPlantillaCorreo(
-                "Nuevo ticket asignado",
-                nombreTecnico,
-                $@"
-                    <p>Se le ha asignado un ticket para atención técnica.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Solicitante:</strong> {EscaparHtml(ticket.UsuarioSolicitante?.NombreCompleto ?? "Sin solicitante")}</p>
-                    <p><strong>Categoría:</strong> {EscaparHtml(ticket.Categoria?.Nombre ?? "Sin categoría")}</p>
-                    <p><strong>Prioridad:</strong> {EscaparHtml(ticket.Prioridad?.Nombre ?? "Sin prioridad")}</p>
-                    <p><strong>Estado actual:</strong> En proceso</p>
-                ");
-        }
-
-        private static string CrearCorreoTicketResuelto(string nombreSolicitante, Ticket ticket)
-        {
-            return CrearPlantillaCorreo(
-                "Ticket resuelto",
-                nombreSolicitante,
-                $@"
-                    <p>Su ticket fue marcado como resuelto por el equipo de soporte.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Solución registrada:</strong></p>
-                    <p>{EscaparHtml(ticket.Solucion ?? "Solución no especificada.")}</p>
-                    <p>Si la solución es correcta, el ticket podrá cerrarse formalmente.</p>
-                ");
-        }
-
-        private static string CrearCorreoCambioEstado(string nombreDestinatario, Ticket ticket, string estado, string? detalle)
-        {
-            return CrearPlantillaCorreo(
-                $"Ticket {estado.ToLower()}",
-                nombreDestinatario,
-                $@"
-                    <p>El estado de su ticket fue actualizado.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Nuevo estado:</strong> {EscaparHtml(estado)}</p>
-                    {(string.IsNullOrWhiteSpace(detalle) ? string.Empty : $"<p><strong>Detalle:</strong> {EscaparHtml(detalle)}</p>")}
-                ");
-        }
-
-        private static string CrearCorreoTicketReclasificado(
-            string nombreSolicitante,
-            Ticket ticket,
-            string impactoAnterior,
-            string urgenciaAnterior,
-            string prioridadAnterior,
-            string nuevaPrioridad,
-            string motivo)
-        {
-            return CrearPlantillaCorreo(
-                "Ticket reclasificado",
-                nombreSolicitante,
-                $@"
-                    <p>La clasificación de su ticket fue revisada por el equipo de soporte.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Impacto anterior:</strong> {EscaparHtml(impactoAnterior)}</p>
-                    <p><strong>Urgencia anterior:</strong> {EscaparHtml(urgenciaAnterior)}</p>
-                    <p><strong>Prioridad anterior:</strong> {EscaparHtml(prioridadAnterior)}</p>
-                    <p><strong>Nuevo impacto:</strong> {EscaparHtml(ticket.Impacto)}</p>
-                    <p><strong>Nueva urgencia:</strong> {EscaparHtml(ticket.Urgencia)}</p>
-                    <p><strong>Nueva prioridad:</strong> {EscaparHtml(nuevaPrioridad)}</p>
-                    <p><strong>Motivo de reclasificación:</strong> {EscaparHtml(motivo)}</p>
-                ");
-        }
-
-        private static string CrearCorreoComentario(
-            string nombreDestinatario,
-            Ticket ticket,
-            ComentarioTicket comentario,
-            string nombreAutor,
-            string rolAutor)
-        {
-            string tipoComentario = comentario.EsInterno ? "interno" : "público";
-
-            return CrearPlantillaCorreo(
-                $"Nuevo comentario {tipoComentario}",
-                nombreDestinatario,
-                $@"
-                    <p>Se agregó un comentario {EscaparHtml(tipoComentario)} al ticket.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Autor:</strong> {EscaparHtml(nombreAutor)} ({EscaparHtml(rolAutor)})</p>
-                    <p><strong>Comentario:</strong></p>
-                    <p>{EscaparHtml(comentario.Comentario)}</p>
-                ");
-        }
-
-        private static string CrearPlantillaCorreo(string titulo, string nombreDestinatario, string contenido)
-        {
-            return $@"
-                <div style=""font-family: Arial, sans-serif; color: #222; line-height: 1.5;"">
-                    <h2 style=""color: #1f4e79;"">{EscaparHtml(titulo)}</h2>
-                    <p>Hola {EscaparHtml(nombreDestinatario)},</p>
-                    {contenido}
-                    <hr />
-                    <p style=""font-size: 12px; color: #666;"">
-                        Este mensaje fue enviado automáticamente por el Sistema de Gestión de Incidentes Tecnológicos UTO.
-                    </p>
-                </div>";
-        }
-
-        private static string EscaparHtml(string valor)
-        {
-            return System.Net.WebUtility.HtmlEncode(valor);
-        }
     }
 }
