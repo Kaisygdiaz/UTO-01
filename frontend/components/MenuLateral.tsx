@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BarChart3,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -42,9 +42,9 @@ const opcionesBase = [
     roles: ["Administrador", "Jefe DTI"],
   },
   {
-    nombre: "Bitácora",
-    href: "/bitacora",
-    icono: ClipboardList,
+    nombre: "Reportes",
+    href: "/reportes",
+    icono: BarChart3,
     roles: ["Administrador", "Jefe DTI"],
   },
 ];
