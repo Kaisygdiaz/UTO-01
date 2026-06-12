@@ -13,6 +13,7 @@ import {
   obtenerComentariosTicket,
   obtenerTicketPorId,
   reabrirTicket,
+  reclasificarTicket,
   resolverTicket,
   subirAdjuntoTicket,
 } from "@/lib/tickets";
@@ -36,6 +37,7 @@ export function useTicketDetalle(id: number) {
   const [subiendoAdjunto, setSubiendoAdjunto] = useState(false);
   const [asignandoTicket, setAsignandoTicket] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [reclasificandoTicket, setReclasificandoTicket] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -168,7 +170,10 @@ export function useTicketDetalle(id: number) {
     }
   }
 
-  async function cerrar(comentarioCierre: string, calificacionSatisfaccion?: number) {
+  async function cerrar(
+    comentarioCierre: string,
+    calificacionSatisfaccion?: number
+  ) {
     try {
       setCambiandoEstado(true);
 
@@ -225,6 +230,26 @@ export function useTicketDetalle(id: number) {
     }
   }
 
+  async function reclasificar(
+    impacto: string,
+    urgencia: string,
+    motivoReclasificacion: string
+  ) {
+    try {
+      setReclasificandoTicket(true);
+
+      await reclasificarTicket(id, {
+        impacto,
+        urgencia,
+        motivoReclasificacion,
+      });
+
+      await refrescarTicketEHistorial();
+    } finally {
+      setReclasificandoTicket(false);
+    }
+  }
+
   useEffect(() => {
     cargarDetalle();
   }, [cargarDetalle]);
@@ -240,6 +265,7 @@ export function useTicketDetalle(id: number) {
     subiendoAdjunto,
     asignandoTicket,
     cambiandoEstado,
+    reclasificandoTicket,
     error,
     agregarComentario,
     subirAdjunto,
@@ -249,6 +275,7 @@ export function useTicketDetalle(id: number) {
     reabrir,
     cancelar,
     escalar,
+    reclasificar,
     recargarDetalle: cargarDetalle,
   };
 }

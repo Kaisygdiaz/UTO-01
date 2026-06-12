@@ -25,6 +25,7 @@ export default function TicketDetallePage() {
     subiendoAdjunto,
     asignandoTicket,
     cambiandoEstado,
+    reclasificandoTicket,
     error,
     agregarComentario,
     subirAdjunto,
@@ -34,6 +35,7 @@ export default function TicketDetallePage() {
     reabrir,
     cancelar,
     escalar,
+    reclasificar,
   } = useTicketDetalle(id);
 
   return (
@@ -74,7 +76,11 @@ export default function TicketDetallePage() {
             />
 
             <div className="xl:sticky xl:top-24 xl:self-start">
-              <TicketPropertiesPanel ticket={ticket} />
+              <TicketPropertiesPanel
+                ticket={ticket}
+                reclasificando={reclasificandoTicket}
+                onReclasificar={reclasificar}
+              />
             </div>
           </div>
         )}

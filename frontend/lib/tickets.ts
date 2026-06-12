@@ -458,6 +458,12 @@ export interface EscalarTicketRequest {
   motivoEscalamiento: string;
 }
 
+export interface ReclasificarTicketRequest {
+  impacto: string;
+  urgencia: string;
+  motivoReclasificacion: string;
+}
+
 export async function resolverTicket(
   ticketId: number,
   datos: ResolverTicketRequest
@@ -491,6 +497,13 @@ export async function escalarTicket(
   datos: EscalarTicketRequest
 ): Promise<void> {
   await api.put(`/Tickets/${ticketId}/escalar`, datos);
+}
+
+export async function reclasificarTicket(
+  ticketId: number,
+  datos: ReclasificarTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/reclasificar`, datos);
 }
 
 export interface CrearTicketRequest {
