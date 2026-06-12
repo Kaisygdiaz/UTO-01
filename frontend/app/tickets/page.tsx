@@ -27,17 +27,7 @@ export default function TicketsPage() {
   return (
     <AppLayout>
       <section className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <TicketsHeader />
-
-          <Link
-            href="/tickets/nuevo"
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Nuevo ticket
-          </Link>
-        </div>
+        <TicketsHeader />
 
         {noTieneTickets ? (
           <Card>

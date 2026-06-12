@@ -396,3 +396,25 @@ export async function escalarTicket(
 ): Promise<void> {
   await api.put(`/Tickets/${ticketId}/escalar`, datos);
 }
+
+export interface CrearTicketRequest {
+  titulo: string;
+  descripcion: string;
+  categoriaId: number;
+  impacto: string;
+  urgencia: string;
+}
+
+export async function crearTicket(
+  datos: CrearTicketRequest
+): Promise<TicketDetalle> {
+  const response = await api.post<Record<string, unknown>>("/Tickets", datos);
+
+  const data = response.data;
+
+  if (data.ticket && typeof data.ticket === "object") {
+    return mapearTicketDetalle(data.ticket as Record<string, unknown>);
+  }
+
+  return mapearTicketDetalle(data);
+}

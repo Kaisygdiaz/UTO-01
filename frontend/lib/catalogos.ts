@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { TecnicoCatalogo } from "@/types/catalogos";
+import type { CategoriaCatalogo, TecnicoCatalogo } from "@/types/catalogos";
 
 function obtenerNumero(
   objeto: Record<string, unknown>,
@@ -39,6 +39,14 @@ function mapearTecnico(item: Record<string, unknown>): TecnicoCatalogo {
   };
 }
 
+function mapearCategoria(item: Record<string, unknown>): CategoriaCatalogo {
+  return {
+    id: obtenerNumero(item, "Id", "id"),
+    nombre: obtenerTexto(item, "Nombre", "nombre"),
+    descripcion: obtenerTexto(item, "Descripcion", "descripcion"),
+  };
+}
+
 export async function obtenerTecnicos(): Promise<TecnicoCatalogo[]> {
   const response = await api.get<unknown>("/Catalogos/tecnicos");
 
@@ -58,3 +66,27 @@ export async function obtenerTecnicos(): Promise<TecnicoCatalogo[]> {
 
   return [];
 }
+
+export async function obtenerCategorias(): Promise<CategoriaCatalogo[]> {
+  const response = await api.get<unknown>("/Catalogos/categorias");
+
+  if (Array.isArray(response.data)) {
+    return response.data.map((item) =>
+      mapearCategoria(item as Record<string, unknown>)
+    );
+  }
+
+  const data = response.data as Record<string, unknown>;
+
+  if (Array.isArray(data.categorias)) {
+    return data.categorias.map((item) =>
+      mapearCategoria(item as Record<string, unknown>)
+    );
+  }
+
+  return [];
+}
+
+export const impactosDisponibles = ["Bajo", "Medio", "Alto"];
+
+export const urgenciasDisponibles = ["Baja", "Media", "Alta"];

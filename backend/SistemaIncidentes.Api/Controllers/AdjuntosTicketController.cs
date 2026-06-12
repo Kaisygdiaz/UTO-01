@@ -71,7 +71,10 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
+            if (!UsuarioTienePermisoSobreTicket(
+                    ticket,
+                    datosUsuario.Value.UsuarioId,
+                    datosUsuario.Value.RolUsuario))
             {
                 return Forbid();
             }
@@ -103,7 +106,9 @@ namespace SistemaIncidentes.Api.Controllers
         [HttpPost]
         [RequestSizeLimit(TamanoMaximoArchivoBytes)]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> SubirAdjunto(int ticketId, [FromForm] SubirAdjuntoTicketDto dto)
+        public async Task<IActionResult> SubirAdjunto(
+            int ticketId,
+            [FromForm] SubirAdjuntoTicketDto dto)
         {
             var datosUsuario = ObtenerDatosUsuario();
 
@@ -144,7 +149,8 @@ namespace SistemaIncidentes.Api.Controllers
 
             var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
 
-            if (string.IsNullOrWhiteSpace(extension) || !ExtensionesPermitidas.Contains(extension))
+            if (string.IsNullOrWhiteSpace(extension) ||
+                !ExtensionesPermitidas.Contains(extension))
             {
                 return BadRequest(new
                 {
@@ -155,7 +161,9 @@ namespace SistemaIncidentes.Api.Controllers
 
             var usuarioAdjunto = await _context.Usuarios
                 .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.Id == datosUsuario.Value.UsuarioId && u.Activo);
+                .FirstOrDefaultAsync(u =>
+                    u.Id == datosUsuario.Value.UsuarioId &&
+                    u.Activo);
 
             if (usuarioAdjunto == null)
             {
@@ -179,13 +187,17 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
+            if (!UsuarioTienePermisoSobreTicket(
+                    ticket,
+                    datosUsuario.Value.UsuarioId,
+                    datosUsuario.Value.RolUsuario))
             {
                 return Forbid();
             }
 
             if (ticket.EstadoTicket != null &&
-                (ticket.EstadoTicket.Nombre == "Cerrado" || ticket.EstadoTicket.Nombre == "Cancelado"))
+                (ticket.EstadoTicket.Nombre == "Cerrado" ||
+                 ticket.EstadoTicket.Nombre == "Cancelado"))
             {
                 return BadRequest(new
                 {
@@ -196,18 +208,31 @@ namespace SistemaIncidentes.Api.Controllers
             var nombreOriginal = Path.GetFileName(archivo.FileName);
             var nombreGuardado = $"{Guid.NewGuid()}{extension}";
 
-            var carpetaRelativa = Path.Combine("Uploads", "Tickets", ticketId.ToString());
-            var carpetaFisica = Path.Combine(_environment.ContentRootPath, carpetaRelativa);
+            var carpetaRelativa = Path.Combine(
+                "Uploads",
+                "Tickets",
+                ticketId.ToString());
+
+            var carpetaFisica = Path.Combine(
+                _environment.ContentRootPath,
+                carpetaRelativa);
 
             Directory.CreateDirectory(carpetaFisica);
 
             var rutaRelativa = Path.Combine(carpetaRelativa, nombreGuardado);
-            var rutaFisica = Path.Combine(_environment.ContentRootPath, rutaRelativa);
+
+            var rutaFisica = Path.Combine(
+                _environment.ContentRootPath,
+                rutaRelativa);
 
             await using (var stream = new FileStream(rutaFisica, FileMode.Create))
             {
                 await archivo.CopyToAsync(stream);
             }
+
+            var descripcionAdjunto = string.IsNullOrWhiteSpace(dto.Descripcion)
+                ? null
+                : dto.Descripcion.Trim();
 
             var adjunto = new AdjuntoTicket
             {
@@ -218,19 +243,22 @@ namespace SistemaIncidentes.Api.Controllers
                 RutaArchivo = rutaRelativa,
                 TipoContenido = archivo.ContentType,
                 TamanoBytes = archivo.Length,
-                Descripcion = string.IsNullOrWhiteSpace(dto.Descripcion) ? null : dto.Descripcion.Trim(),
+                Descripcion = descripcionAdjunto,
                 FechaCarga = DateTime.UtcNow,
                 Activo = true
             };
 
             await _context.AdjuntosTicket.AddAsync(adjunto);
 
+            var descripcionAdjuntoBitacora = string.IsNullOrWhiteSpace(adjunto.Descripcion)
+                ? "Sin descripción registrada."
+                : adjunto.Descripcion.Trim();
+
             await RegistrarBitacoraAsync(
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Adjunto agregado",
-                $"Se agregó el archivo '{nombreOriginal}' como evidencia del ticket."
-            );
+                $"Se agregó el archivo \"{nombreOriginal}\" como evidencia del ticket.\n\nDescripción: {descripcionAdjuntoBitacora}");
 
             await _context.SaveChangesAsync();
 
@@ -286,13 +314,19 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
+            if (!UsuarioTienePermisoSobreTicket(
+                    ticket,
+                    datosUsuario.Value.UsuarioId,
+                    datosUsuario.Value.RolUsuario))
             {
                 return Forbid();
             }
 
             var adjunto = await _context.AdjuntosTicket
-                .FirstOrDefaultAsync(a => a.Id == adjuntoId && a.TicketId == ticketId && a.Activo);
+                .FirstOrDefaultAsync(a =>
+                    a.Id == adjuntoId &&
+                    a.TicketId == ticketId &&
+                    a.Activo);
 
             if (adjunto == null)
             {
@@ -302,7 +336,9 @@ namespace SistemaIncidentes.Api.Controllers
                 });
             }
 
-            var rutaFisica = Path.Combine(_environment.ContentRootPath, adjunto.RutaArchivo);
+            var rutaFisica = Path.Combine(
+                _environment.ContentRootPath,
+                adjunto.RutaArchivo);
 
             if (!System.IO.File.Exists(rutaFisica))
             {
@@ -314,82 +350,10 @@ namespace SistemaIncidentes.Api.Controllers
 
             var bytes = await System.IO.File.ReadAllBytesAsync(rutaFisica);
 
-            return File(bytes, adjunto.TipoContenido, adjunto.NombreArchivoOriginal);
-        }
-
-        [HttpDelete("{adjuntoId:int}")]
-        public async Task<IActionResult> EliminarAdjunto(int ticketId, int adjuntoId)
-        {
-            var datosUsuario = ObtenerDatosUsuario();
-
-            if (datosUsuario == null)
-            {
-                return Unauthorized(new
-                {
-                    mensaje = "No se pudo identificar al usuario autenticado."
-                });
-            }
-
-            var ticket = await _context.Tickets
-                .Include(t => t.EstadoTicket)
-                .FirstOrDefaultAsync(t => t.Id == ticketId);
-
-            if (ticket == null)
-            {
-                return NotFound(new
-                {
-                    mensaje = "Ticket no encontrado."
-                });
-            }
-
-            if (!UsuarioTienePermisoSobreTicket(ticket, datosUsuario.Value.UsuarioId, datosUsuario.Value.RolUsuario))
-            {
-                return Forbid();
-            }
-
-            if (ticket.EstadoTicket != null &&
-                (ticket.EstadoTicket.Nombre == "Cerrado" || ticket.EstadoTicket.Nombre == "Cancelado"))
-            {
-                return BadRequest(new
-                {
-                    mensaje = "No se pueden eliminar adjuntos de tickets cerrados o cancelados."
-                });
-            }
-
-            var adjunto = await _context.AdjuntosTicket
-                .FirstOrDefaultAsync(a => a.Id == adjuntoId && a.TicketId == ticketId && a.Activo);
-
-            if (adjunto == null)
-            {
-                return NotFound(new
-                {
-                    mensaje = "Adjunto no encontrado."
-                });
-            }
-
-            bool esAutorAdjunto = adjunto.UsuarioId == datosUsuario.Value.UsuarioId;
-            bool esAdministradorOJefe = datosUsuario.Value.RolUsuario == "Administrador" || datosUsuario.Value.RolUsuario == "Jefe DTI";
-
-            if (!esAutorAdjunto && !esAdministradorOJefe)
-            {
-                return Forbid();
-            }
-
-            adjunto.Activo = false;
-
-            await RegistrarBitacoraAsync(
-                ticket.Id,
-                datosUsuario.Value.UsuarioId,
-                "Adjunto eliminado",
-                $"Se eliminó lógicamente el archivo '{adjunto.NombreArchivoOriginal}' del ticket."
-            );
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                mensaje = "Adjunto eliminado correctamente."
-            });
+            return File(
+                bytes,
+                adjunto.TipoContenido,
+                adjunto.NombreArchivoOriginal);
         }
 
         private (int UsuarioId, string? RolUsuario)? ObtenerDatosUsuario()
@@ -397,7 +361,8 @@ namespace SistemaIncidentes.Api.Controllers
             var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var rolUsuario = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (string.IsNullOrWhiteSpace(usuarioIdClaim) || !int.TryParse(usuarioIdClaim, out int usuarioId))
+            if (string.IsNullOrWhiteSpace(usuarioIdClaim) ||
+                !int.TryParse(usuarioIdClaim, out int usuarioId))
             {
                 return null;
             }
@@ -405,27 +370,11 @@ namespace SistemaIncidentes.Api.Controllers
             return (usuarioId, rolUsuario);
         }
 
-        private static bool UsuarioTienePermisoSobreTicket(Ticket ticket, int usuarioId, string? rolUsuario)
-        {
-            if (rolUsuario == "Administrador" || rolUsuario == "Jefe DTI")
-            {
-                return true;
-            }
-
-            if (rolUsuario == "Solicitante" && ticket.UsuarioSolicitanteId == usuarioId)
-            {
-                return true;
-            }
-
-            if (rolUsuario == "Técnico" && ticket.TecnicoAsignadoId == usuarioId)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private async Task RegistrarBitacoraAsync(int ticketId, int usuarioId, string accion, string? detalle)
+        private async Task RegistrarBitacoraAsync(
+            int ticketId,
+            int usuarioId,
+            string accion,
+            string? detalle)
         {
             var registro = new BitacoraAuditoria
             {
@@ -439,41 +388,48 @@ namespace SistemaIncidentes.Api.Controllers
             await _context.BitacoraAuditoria.AddAsync(registro);
         }
 
-        private async Task NotificarAdjuntoAsync(Ticket ticket, AdjuntoTicket adjunto, Usuario usuarioAdjunto)
+        private static bool UsuarioTienePermisoSobreTicket(
+            Ticket ticket,
+            int usuarioId,
+            string? rolUsuario)
         {
-            string rolUsuario = usuarioAdjunto.Rol?.Nombre ?? string.Empty;
+            if (rolUsuario == "Administrador" || rolUsuario == "Jefe DTI")
+            {
+                return true;
+            }
 
+            if (rolUsuario == "Solicitante" &&
+                ticket.UsuarioSolicitanteId == usuarioId)
+            {
+                return true;
+            }
+
+            if (rolUsuario == "Técnico" &&
+                ticket.TecnicoAsignadoId == usuarioId)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private async Task NotificarAdjuntoAsync(
+            Ticket ticket,
+            AdjuntoTicket adjunto,
+            Usuario usuarioAdjunto)
+        {
             var destinatarios = new List<Usuario>();
 
-            if (rolUsuario == "Solicitante")
+            if (ticket.UsuarioSolicitante != null &&
+                ticket.UsuarioSolicitante.Id != usuarioAdjunto.Id)
             {
-                if (ticket.TecnicoAsignado != null &&
-                    ticket.TecnicoAsignado.Id != usuarioAdjunto.Id)
-                {
-                    destinatarios.Add(ticket.TecnicoAsignado);
-                }
+                destinatarios.Add(ticket.UsuarioSolicitante);
             }
-            else if (rolUsuario == "Técnico")
-            {
-                if (ticket.UsuarioSolicitante != null &&
-                    ticket.UsuarioSolicitante.Id != usuarioAdjunto.Id)
-                {
-                    destinatarios.Add(ticket.UsuarioSolicitante);
-                }
-            }
-            else if (rolUsuario == "Administrador" || rolUsuario == "Jefe DTI")
-            {
-                if (ticket.UsuarioSolicitante != null &&
-                    ticket.UsuarioSolicitante.Id != usuarioAdjunto.Id)
-                {
-                    destinatarios.Add(ticket.UsuarioSolicitante);
-                }
 
-                if (ticket.TecnicoAsignado != null &&
-                    ticket.TecnicoAsignado.Id != usuarioAdjunto.Id)
-                {
-                    destinatarios.Add(ticket.TecnicoAsignado);
-                }
+            if (ticket.TecnicoAsignado != null &&
+                ticket.TecnicoAsignado.Id != usuarioAdjunto.Id)
+            {
+                destinatarios.Add(ticket.TecnicoAsignado);
             }
 
             var destinatariosUnicos = destinatarios
@@ -491,11 +447,31 @@ namespace SistemaIncidentes.Api.Controllers
                         destinatario.NombreCompleto,
                         ticket,
                         adjunto,
-                        usuarioAdjunto.NombreCompleto,
-                        rolUsuario),
+                        usuarioAdjunto.NombreCompleto),
                     ticket.Id,
                     "Error notificación adjunto");
             }
+        }
+
+        private static string CrearCorreoAdjunto(
+            string destinatario,
+            Ticket ticket,
+            AdjuntoTicket adjunto,
+            string usuarioAdjunto)
+        {
+            var descripcion = string.IsNullOrWhiteSpace(adjunto.Descripcion)
+                ? "Sin descripción registrada."
+                : adjunto.Descripcion;
+
+            return $@"
+                <h2>Nuevo adjunto agregado</h2>
+                <p>Hola {destinatario},</p>
+                <p>Se agregó un nuevo archivo al ticket #{ticket.Id}.</p>
+                <p><strong>Título:</strong> {ticket.Titulo}</p>
+                <p><strong>Archivo:</strong> {adjunto.NombreArchivoOriginal}</p>
+                <p><strong>Descripción:</strong> {descripcion}</p>
+                <p><strong>Agregado por:</strong> {usuarioAdjunto}</p>
+            ";
         }
 
         private async Task EnviarCorreoSeguroAsync(
@@ -512,52 +488,19 @@ namespace SistemaIncidentes.Api.Controllers
 
             try
             {
-                await _emailService.EnviarCorreoAsync(destinatario, asunto, contenidoHtml);
+                await _emailService.EnviarCorreoAsync(
+                    destinatario,
+                    asunto,
+                    contenidoHtml);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "No se pudo enviar correo para el ticket {TicketId}. Acción: {Accion}", ticketId, accionFallo);
+                _logger.LogWarning(
+                    ex,
+                    "No se pudo enviar correo para el ticket {TicketId}. Acción: {Accion}",
+                    ticketId,
+                    accionFallo);
             }
-        }
-
-        private static string CrearCorreoAdjunto(
-            string nombreDestinatario,
-            Ticket ticket,
-            AdjuntoTicket adjunto,
-            string nombreAutor,
-            string rolAutor)
-        {
-            return CrearPlantillaCorreo(
-                "Nuevo adjunto agregado",
-                nombreDestinatario,
-                $@"
-                    <p>Se agregó un nuevo archivo adjunto como evidencia del ticket.</p>
-                    <p><strong>Número de ticket:</strong> #{ticket.Id}</p>
-                    <p><strong>Título:</strong> {EscaparHtml(ticket.Titulo)}</p>
-                    <p><strong>Archivo:</strong> {EscaparHtml(adjunto.NombreArchivoOriginal)}</p>
-                    <p><strong>Subido por:</strong> {EscaparHtml(nombreAutor)} ({EscaparHtml(rolAutor)})</p>
-                    {(string.IsNullOrWhiteSpace(adjunto.Descripcion) ? string.Empty : $"<p><strong>Descripción:</strong> {EscaparHtml(adjunto.Descripcion)}</p>")}
-                    <p>Puede ingresar al sistema para revisar o descargar la evidencia.</p>
-                ");
-        }
-
-        private static string CrearPlantillaCorreo(string titulo, string nombreDestinatario, string contenido)
-        {
-            return $@"
-                <div style=""font-family: Arial, sans-serif; color: #222; line-height: 1.5;"">
-                    <h2 style=""color: #1f4e79;"">{EscaparHtml(titulo)}</h2>
-                    <p>Hola {EscaparHtml(nombreDestinatario)},</p>
-                    {contenido}
-                    <hr />
-                    <p style=""font-size: 12px; color: #666;"">
-                        Este mensaje fue enviado automáticamente por el Sistema de Gestión de Incidentes Tecnológicos UTO.
-                    </p>
-                </div>";
-        }
-
-        private static string EscaparHtml(string valor)
-        {
-            return System.Net.WebUtility.HtmlEncode(valor);
         }
     }
 }
