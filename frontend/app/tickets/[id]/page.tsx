@@ -14,8 +14,27 @@ export default function TicketDetallePage() {
   const params = useParams();
   const id = Number(params.id);
 
-  const { ticket, bitacora, comentarios, adjuntos, cargando, error } =
-    useTicketDetalle(id);
+  const {
+    ticket,
+    bitacora,
+    comentarios,
+    adjuntos,
+    tecnicos,
+    cargando,
+    guardandoComentario,
+    subiendoAdjunto,
+    asignandoTicket,
+    cambiandoEstado,
+    error,
+    agregarComentario,
+    subirAdjunto,
+    asignarTecnico,
+    resolver,
+    cerrar,
+    reabrir,
+    cancelar,
+    escalar,
+  } = useTicketDetalle(id);
 
   return (
     <AppLayout>
@@ -39,6 +58,19 @@ export default function TicketDetallePage() {
               comentarios={comentarios}
               adjuntos={adjuntos}
               historial={bitacora}
+              tecnicos={tecnicos}
+              guardandoComentario={guardandoComentario}
+              subiendoAdjunto={subiendoAdjunto}
+              asignandoTicket={asignandoTicket}
+              cambiandoEstado={cambiandoEstado}
+              onAgregarComentario={agregarComentario}
+              onSubirAdjunto={subirAdjunto}
+              onAsignarTecnico={asignarTecnico}
+              onResolver={resolver}
+              onCerrarTicket={cerrar}
+              onReabrir={reabrir}
+              onCancelar={cancelar}
+              onEscalar={escalar}
             />
 
             <div className="xl:sticky xl:top-24 xl:self-start">

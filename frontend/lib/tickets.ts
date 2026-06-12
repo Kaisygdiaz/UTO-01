@@ -282,3 +282,117 @@ export async function obtenerAdjuntosTicket(
 export function obtenerUrlDescargaAdjunto(ticketId: number, adjuntoId: number) {
   return `/Tickets/${ticketId}/adjuntos/${adjuntoId}/descargar`;
 }
+
+export interface CrearComentarioTicketRequest {
+  comentario: string;
+  esInterno: boolean;
+}
+
+export async function crearComentarioTicket(
+  ticketId: number,
+  datos: CrearComentarioTicketRequest
+): Promise<ComentarioTicket> {
+  const response = await api.post<Record<string, unknown>>(
+    `/Tickets/${ticketId}/comentarios`,
+    datos
+  );
+
+  return mapearComentario(response.data);
+}
+
+export interface SubirAdjuntoTicketRequest {
+  archivo: File;
+  descripcion?: string;
+}
+
+export async function subirAdjuntoTicket(
+  ticketId: number,
+  datos: SubirAdjuntoTicketRequest
+): Promise<AdjuntoTicket> {
+  const formData = new FormData();
+
+  formData.append("archivo", datos.archivo);
+
+  if (datos.descripcion && datos.descripcion.trim() !== "") {
+    formData.append("descripcion", datos.descripcion.trim());
+  }
+
+  const response = await api.post<Record<string, unknown>>(
+    `/Tickets/${ticketId}/adjuntos`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return mapearAdjunto(response.data);
+}
+
+export interface AsignarTicketRequest {
+  tecnicoId: number;
+}
+
+export async function asignarTicket(
+  ticketId: number,
+  datos: AsignarTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/asignar`, datos);
+}
+
+export interface ResolverTicketRequest {
+  solucion: string;
+}
+
+export interface CerrarTicketRequest {
+  comentarioCierre: string;
+  calificacionSatisfaccion?: number;
+}
+
+export interface ReabrirTicketRequest {
+  motivoReapertura: string;
+}
+
+export interface CancelarTicketRequest {
+  motivoCancelacion: string;
+}
+
+export interface EscalarTicketRequest {
+  motivoEscalamiento: string;
+}
+
+export async function resolverTicket(
+  ticketId: number,
+  datos: ResolverTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/resolver`, datos);
+}
+
+export async function cerrarTicket(
+  ticketId: number,
+  datos: CerrarTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/cerrar`, datos);
+}
+
+export async function reabrirTicket(
+  ticketId: number,
+  datos: ReabrirTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/reabrir`, datos);
+}
+
+export async function cancelarTicket(
+  ticketId: number,
+  datos: CancelarTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/cancelar`, datos);
+}
+
+export async function escalarTicket(
+  ticketId: number,
+  datos: EscalarTicketRequest
+): Promise<void> {
+  await api.put(`/Tickets/${ticketId}/escalar`, datos);
+}

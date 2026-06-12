@@ -200,8 +200,8 @@ namespace SistemaIncidentes.Api.Services
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket reclasificado",
-                $"El ticket fue reclasificado. Impacto anterior: {impactoAnterior}, urgencia anterior: {urgenciaAnterior}, prioridad anterior: {prioridadAnterior}. " +
-                $"Nuevo impacto: {ticket.Impacto}, nueva urgencia: {ticket.Urgencia}, nueva prioridad: {nuevaPrioridad.Nombre}. " +
+                $"El ticket fue reclasificado.\n\nImpacto anterior: {impactoAnterior}\nUrgencia anterior: {urgenciaAnterior}\nPrioridad anterior: {prioridadAnterior}\n\n" +
+                $"Nuevo impacto: {ticket.Impacto}\nNueva urgencia: {ticket.Urgencia}\nNueva prioridad: {nuevaPrioridad.Nombre}\n\n" +
                 $"Motivo: {dto.MotivoReclasificacion.Trim()}");
 
             await _context.SaveChangesAsync();
@@ -323,7 +323,7 @@ namespace SistemaIncidentes.Api.Services
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket escalado",
-                "El ticket fue escalado. Motivo: " + ticket.MotivoEscalamiento);
+                $"El ticket fue escalado.\n\nMotivo de escalamiento: {ticket.MotivoEscalamiento}");
 
             await _context.SaveChangesAsync();
 
@@ -422,7 +422,7 @@ namespace SistemaIncidentes.Api.Services
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket cancelado",
-                "El ticket fue cancelado. Motivo: " + ticket.MotivoCancelacion);
+                $"El ticket fue cancelado.\n\nMotivo de cancelación: {ticket.MotivoCancelacion}");
 
             await _context.SaveChangesAsync();
 
@@ -530,7 +530,7 @@ namespace SistemaIncidentes.Api.Services
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket reabierto",
-                "El ticket fue reabierto y cambió nuevamente al estado Abierto. Motivo: " + ticket.MotivoReapertura);
+                $"El ticket fue reabierto y cambió nuevamente al estado Abierto.\n\nMotivo de reapertura: {ticket.MotivoReapertura}");
 
             await _context.SaveChangesAsync();
 
@@ -606,11 +606,15 @@ namespace SistemaIncidentes.Api.Services
             ticket.EstadoTicketId = estadoResuelto.Id;
             ticket.FechaResolucion = DateTime.UtcNow;
 
+            var solucionBitacora = string.IsNullOrWhiteSpace(ticket.Solucion)
+                ? "Sin solución registrada."
+                : ticket.Solucion.Trim();
+
             await RegistrarBitacoraAsync(
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket resuelto",
-                "El ticket fue marcado como Resuelto y se registró la solución aplicada.");
+                $"El ticket fue marcado como Resuelto.\n\nSolución aplicada: {solucionBitacora}");
 
             await _context.SaveChangesAsync();
 
@@ -688,11 +692,19 @@ namespace SistemaIncidentes.Api.Services
                 : dto.ComentarioCierre.Trim();
             ticket.CalificacionSatisfaccion = dto.CalificacionSatisfaccion;
 
+            var comentarioCierreBitacora = string.IsNullOrWhiteSpace(ticket.ComentarioCierre)
+                ? "Sin comentario de cierre."
+                : ticket.ComentarioCierre.Trim();
+
+            var calificacionBitacora = dto.CalificacionSatisfaccion.HasValue
+                ? dto.CalificacionSatisfaccion.Value.ToString()
+                : "No registrada";
+
             await RegistrarBitacoraAsync(
                 ticket.Id,
                 datosUsuario.Value.UsuarioId,
                 "Ticket cerrado",
-                $"El ticket fue cerrado formalmente. Calificación de satisfacción: {(dto.CalificacionSatisfaccion.HasValue ? dto.CalificacionSatisfaccion.Value.ToString() : "No registrada")}.");
+                $"El ticket fue cerrado formalmente.\n\nComentario de cierre: {comentarioCierreBitacora}\n\nCalificación de satisfacción: {calificacionBitacora}.");
 
             await _context.SaveChangesAsync();
 
@@ -834,6 +846,5 @@ namespace SistemaIncidentes.Api.Services
                 _logger.LogWarning(ex, "No se pudo enviar correo para el ticket {TicketId}. Acción: {Accion}", ticketId, accionFallo);
             }
         }
-
     }
 }

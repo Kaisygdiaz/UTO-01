@@ -4,6 +4,8 @@ import { useState } from "react";
 import Card from "@/components/ui/Card";
 import TicketPriorityBadge from "@/components/tickets/TicketPriorityBadge";
 import TicketStatusBadge from "@/components/tickets/TicketStatusBadge";
+import TicketAsignarModal from "./TicketAsignarModal";
+import TicketEstadoModal from "./TicketEstadoModal";
 import { formatearFecha } from "@/utils/dates";
 import {
   obtenerEstiloEstado,
@@ -11,6 +13,7 @@ import {
   obtenerEstiloPrioridad,
   obtenerEstiloUrgencia,
 } from "@/utils/ticketStyles";
+import type { TecnicoCatalogo } from "@/types/catalogos";
 import type {
   AdjuntoTicket,
   BitacoraTicket,
@@ -26,6 +29,7 @@ import {
   History,
   MessageSquare,
   Paperclip,
+  Send,
 } from "lucide-react";
 
 interface TicketDetailWorkspaceProps {
@@ -33,6 +37,22 @@ interface TicketDetailWorkspaceProps {
   comentarios: ComentarioTicket[];
   adjuntos: AdjuntoTicket[];
   historial: BitacoraTicket[];
+  tecnicos: TecnicoCatalogo[];
+  guardandoComentario: boolean;
+  subiendoAdjunto: boolean;
+  asignandoTicket: boolean;
+  cambiandoEstado: boolean;
+  onAgregarComentario: (comentario: string, esInterno: boolean) => Promise<void>;
+  onSubirAdjunto: (archivo: File, descripcion: string) => Promise<void>;
+  onAsignarTecnico: (tecnicoId: number) => Promise<void>;
+  onResolver: (solucion: string) => Promise<void>;
+  onCerrarTicket: (
+    comentarioCierre: string,
+    calificacionSatisfaccion?: number
+  ) => Promise<void>;
+  onReabrir: (motivoReapertura: string) => Promise<void>;
+  onCancelar: (motivoCancelacion: string) => Promise<void>;
+  onEscalar: (motivoEscalamiento: string) => Promise<void>;
 }
 
 type TabActiva = "conversaciones" | "detalles" | "adjuntos" | "historial";
@@ -42,8 +62,28 @@ export default function TicketDetailWorkspace({
   comentarios,
   adjuntos,
   historial,
+  tecnicos,
+  guardandoComentario,
+  subiendoAdjunto,
+  asignandoTicket,
+  cambiandoEstado,
+  onAgregarComentario,
+  onSubirAdjunto,
+  onAsignarTecnico,
+  onResolver,
+  onCerrarTicket,
+  onReabrir,
+  onCancelar,
+  onEscalar,
 }: TicketDetailWorkspaceProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>("conversaciones");
+  const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
+  const [modalEstadoAbierto, setModalEstadoAbierto] = useState(false);
+
+  const tieneTecnicoAsignado =
+    !!ticket.tecnicoAsignado &&
+    ticket.tecnicoAsignado.trim() !== "" &&
+    ticket.tecnicoAsignado !== "No definido";
 
   return (
     <Card className="overflow-hidden">
@@ -75,15 +115,24 @@ export default function TicketDetailWorkspace({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              Asignar
+            <button
+              onClick={() => setModalAsignarAbierto(true)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {tieneTecnicoAsignado ? "Reasignar" : "Asignar"}
             </button>
 
-            <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            <button
+              onClick={() => setModalEstadoAbierto(true)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
               Cambiar estado
             </button>
 
-            <button className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+            <button
+              onClick={() => setTabActiva("conversaciones")}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
               Responder
             </button>
           </div>
@@ -124,17 +173,48 @@ export default function TicketDetailWorkspace({
 
       <div className="min-h-[420px] bg-white p-6">
         {tabActiva === "conversaciones" && (
-          <ConversacionesPanel comentarios={comentarios} />
+          <ConversacionesPanel
+            comentarios={comentarios}
+            guardandoComentario={guardandoComentario}
+            onAgregarComentario={onAgregarComentario}
+          />
         )}
 
         {tabActiva === "detalles" && <DetallesPanel ticket={ticket} />}
 
         {tabActiva === "adjuntos" && (
-          <AdjuntosPanel ticketId={ticket.id} adjuntos={adjuntos} />
+          <AdjuntosPanel
+            ticketId={ticket.id}
+            adjuntos={adjuntos}
+            subiendoAdjunto={subiendoAdjunto}
+            onSubirAdjunto={onSubirAdjunto}
+          />
         )}
 
         {tabActiva === "historial" && <HistorialPanel historial={historial} />}
       </div>
+
+      <TicketAsignarModal
+        abierto={modalAsignarAbierto}
+        tecnicos={tecnicos}
+        asignando={asignandoTicket}
+        esReasignacion={tieneTecnicoAsignado}
+        tecnicoActual={ticket.tecnicoAsignado}
+        onCerrar={() => setModalAsignarAbierto(false)}
+        onAsignar={onAsignarTecnico}
+      />
+
+      <TicketEstadoModal
+        abierto={modalEstadoAbierto}
+        estadoActual={ticket.estado}
+        procesando={cambiandoEstado}
+        onCerrar={() => setModalEstadoAbierto(false)}
+        onResolver={onResolver}
+        onCerrarTicket={onCerrarTicket}
+        onReabrir={onReabrir}
+        onCancelar={onCancelar}
+        onEscalar={onEscalar}
+      />
     </Card>
   );
 }
@@ -162,14 +242,85 @@ function TabButton({ children, activa, onClick }: TabButtonProps) {
 
 function ConversacionesPanel({
   comentarios,
+  guardandoComentario,
+  onAgregarComentario,
 }: {
   comentarios: ComentarioTicket[];
+  guardandoComentario: boolean;
+  onAgregarComentario: (comentario: string, esInterno: boolean) => Promise<void>;
 }) {
+  const [comentario, setComentario] = useState("");
+  const [esInterno, setEsInterno] = useState(false);
+  const [error, setError] = useState("");
+
+  async function enviarComentario() {
+    try {
+      setError("");
+
+      if (!comentario.trim()) {
+        setError("Debe escribir un comentario antes de enviarlo.");
+        return;
+      }
+
+      await onAgregarComentario(comentario, esInterno);
+
+      setComentario("");
+      setEsInterno(false);
+    } catch {
+      setError("No fue posible guardar el comentario.");
+    }
+  }
+
   return (
     <div>
       <div className="mb-5 flex items-center gap-2">
         <MessageSquare className="h-5 w-5 text-blue-600" />
         <h2 className="text-lg font-bold text-slate-900">Conversaciones</h2>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <label className="text-sm font-semibold text-slate-800">
+          Agregar respuesta
+        </label>
+
+        <textarea
+          value={comentario}
+          onChange={(e) => setComentario(e.target.value)}
+          rows={4}
+          placeholder="Escriba una respuesta o actualización del ticket..."
+          className="mt-3 w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        />
+
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={esInterno}
+              onChange={(e) => setEsInterno(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600"
+            />
+            Comentario interno
+          </label>
+
+          <button
+            onClick={enviarComentario}
+            disabled={guardandoComentario}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Send className="h-4 w-4" />
+            {guardandoComentario ? "Guardando..." : "Enviar comentario"}
+          </button>
+        </div>
+
+        {error && (
+          <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
+        )}
+
+        {esInterno && (
+          <p className="mt-3 rounded-lg bg-purple-50 px-3 py-2 text-xs text-purple-700">
+            Este comentario será visible únicamente para personal autorizado.
+          </p>
+        )}
       </div>
 
       {comentarios.length === 0 && (
@@ -181,25 +332,25 @@ function ConversacionesPanel({
       )}
 
       <div className="space-y-4">
-        {comentarios.map((comentario) => (
+        {comentarios.map((comentarioItem) => (
           <div
-            key={comentario.id}
+            key={comentarioItem.id}
             className="rounded-xl border border-slate-200 p-4"
           >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="font-semibold text-slate-900">
-                  {comentario.usuario}
+                  {comentarioItem.usuario}
                 </p>
-                <p className="text-xs text-slate-500">{comentario.rol}</p>
+                <p className="text-xs text-slate-500">{comentarioItem.rol}</p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {comentario.tipoComentario}
+                  {comentarioItem.tipoComentario}
                 </span>
 
-                {comentario.esInterno && (
+                {comentarioItem.esInterno && (
                   <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
                     Interno
                   </span>
@@ -208,11 +359,11 @@ function ConversacionesPanel({
             </div>
 
             <p className="mt-3 text-sm leading-6 text-slate-700">
-              {comentario.comentario}
+              {comentarioItem.comentario}
             </p>
 
             <p className="mt-3 text-xs text-slate-400">
-              {formatearFecha(comentario.fechaRegistro)}
+              {formatearFecha(comentarioItem.fechaRegistro)}
             </p>
           </div>
         ))}
@@ -228,40 +379,49 @@ function DetallesPanel({ ticket }: { ticket: TicketDetalle }) {
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <DetailItem label="Categoría" value={ticket.categoria} />
+
         <ColoredDetailItem
           label="Estado"
           value={ticket.estado}
           className={obtenerEstiloEstado(ticket.estado)}
         />
+
         <ColoredDetailItem
           label="Prioridad"
           value={ticket.prioridad}
           className={obtenerEstiloPrioridad(ticket.prioridad)}
         />
+
         <ColoredDetailItem
           label="Impacto"
           value={ticket.impacto}
           className={obtenerEstiloImpacto(ticket.impacto)}
         />
+
         <ColoredDetailItem
           label="Urgencia"
           value={ticket.urgencia}
           className={obtenerEstiloUrgencia(ticket.urgencia)}
         />
+
         <DetailItem label="Solicitante" value={ticket.solicitante} />
         <DetailItem label="Técnico asignado" value={ticket.tecnicoAsignado} />
+
         <DetailItem
           label="Fecha de creación"
           value={formatearFecha(ticket.fechaCreacion)}
         />
+
         <DetailItem
           label="Primera respuesta"
           value={formatearFecha(ticket.fechaPrimeraRespuesta)}
         />
+
         <DetailItem
           label="Resolución"
           value={formatearFecha(ticket.fechaResolucion)}
         />
+
         <DetailItem label="Cierre" value={formatearFecha(ticket.fechaCierre)} />
       </div>
 
@@ -281,6 +441,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
         {label}
       </p>
+
       <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
     </div>
   );
@@ -300,18 +461,39 @@ function ColoredDetailItem({
       <p className="text-xs font-semibold uppercase tracking-wide opacity-75">
         {label}
       </p>
+
       <p className="mt-1 text-sm font-bold">{value}</p>
     </div>
   );
 }
 
+function formatearTamanoArchivo(bytes: number) {
+  if (bytes <= 0) return "0 KB";
+
+  const kb = bytes / 1024;
+
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
 function AdjuntosPanel({
   ticketId,
   adjuntos,
+  subiendoAdjunto,
+  onSubirAdjunto,
 }: {
   ticketId: number;
   adjuntos: AdjuntoTicket[];
+  subiendoAdjunto: boolean;
+  onSubirAdjunto: (archivo: File, descripcion: string) => Promise<void>;
 }) {
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [descripcion, setDescripcion] = useState("");
+  const [error, setError] = useState("");
+
   async function descargarAdjunto(adjuntoId: number, nombreArchivo: string) {
     const response = await api.get(
       obtenerUrlDescargaAdjunto(ticketId, adjuntoId),
@@ -332,11 +514,71 @@ function AdjuntosPanel({
     window.URL.revokeObjectURL(url);
   }
 
+  async function enviarAdjunto() {
+    try {
+      setError("");
+
+      if (!archivo) {
+        setError("Debe seleccionar un archivo.");
+        return;
+      }
+
+      await onSubirAdjunto(archivo, descripcion);
+
+      setArchivo(null);
+      setDescripcion("");
+    } catch {
+      setError("No fue posible subir el archivo adjunto.");
+    }
+  }
+
   return (
     <div>
       <div className="mb-5 flex items-center gap-2">
         <Paperclip className="h-5 w-5 text-blue-600" />
         <h2 className="text-lg font-bold text-slate-900">Adjuntos</h2>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <label className="text-sm font-semibold text-slate-800">
+          Agregar archivo adjunto
+        </label>
+
+        <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_180px]">
+          <input
+            type="file"
+            onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+          />
+
+          <button
+            onClick={enviarAdjunto}
+            disabled={subiendoAdjunto}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Paperclip className="h-4 w-4" />
+            {subiendoAdjunto ? "Subiendo..." : "Subir archivo"}
+          </button>
+        </div>
+
+        <textarea
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          rows={3}
+          placeholder="Descripción del archivo o evidencia adjunta..."
+          className="mt-3 w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        />
+
+        {archivo && (
+          <p className="mt-2 text-xs text-slate-500">
+            Archivo seleccionado:{" "}
+            <span className="font-semibold text-slate-700">{archivo.name}</span>
+          </p>
+        )}
+
+        {error && (
+          <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
+        )}
       </div>
 
       {adjuntos.length === 0 && (
@@ -362,9 +604,18 @@ function AdjuntosPanel({
                 <p className="font-semibold text-slate-900">
                   {adjunto.nombreArchivoOriginal}
                 </p>
+
                 <p className="text-xs text-slate-500">
-                  {adjunto.usuario} · {formatearFecha(adjunto.fechaCarga)}
+                  {formatearTamanoArchivo(adjunto.tamanoBytes)} ·{" "}
+                  {adjunto.tipoContenido} · {adjunto.usuario} ·{" "}
+                  {formatearFecha(adjunto.fechaCarga)}
                 </p>
+
+                {adjunto.descripcion && (
+                  <p className="mt-2 text-sm leading-5 text-slate-600">
+                    {adjunto.descripcion}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -415,7 +666,9 @@ function HistorialPanel({ historial }: { historial: BitacoraTicket[] }) {
 
             <div>
               <p className="font-semibold text-slate-900">{item.accion}</p>
-              <p className="mt-1 text-sm text-slate-600">{item.detalle}</p>
+              <p className="mt-1 whitespace-pre-line text-sm text-slate-600">
+                {item.detalle}
+              </p>
               <p className="mt-2 text-xs text-slate-400">{item.usuario}</p>
             </div>
           </div>

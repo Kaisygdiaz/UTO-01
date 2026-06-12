@@ -148,8 +148,8 @@ namespace SistemaIncidentes.Api.Services
             string tipoComentario = comentario.EsInterno ? "interno" : "público";
 
             var detalleComentarioBitacora =
-                $"Se agregó un comentario {tipoComentario} al ticket. " +
-                $"Comentario: \"{comentario.Comentario}\"";
+                $"Se agregó un comentario {tipoComentario} al ticket.\n\n" +
+                $"Comentario: {comentario.Comentario}";
 
             await RegistrarBitacoraAsync(
                 ticket.Id,
