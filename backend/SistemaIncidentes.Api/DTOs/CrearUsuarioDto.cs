@@ -4,23 +4,17 @@ namespace SistemaIncidentes.Api.DTOs
 {
     public class CrearUsuarioDto
     {
-        [Required]
-        [MaxLength(100)]
+        [Required(ErrorMessage = "El nombre completo es obligatorio.")]
         public string NombreCompleto { get; set; } = string.Empty;
 
-        [Required]
-        [EmailAddress]
-        [MaxLength(120)]
+        [Required(ErrorMessage = "El correo es obligatorio.")]
+        [EmailAddress(ErrorMessage = "El correo no tiene un formato válido.")]
         public string Correo { get; set; } = string.Empty;
 
-        [Required]
-        [MinLength(8)]
-        public string Password { get; set; } = string.Empty;
-
-        [MaxLength(20)]
         public string? Telefono { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "El rol es obligatorio.")]
+        [Range(1, int.MaxValue, ErrorMessage = "Debe seleccionar un rol válido.")]
         public int RolId { get; set; }
     }
 }

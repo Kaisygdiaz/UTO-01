@@ -14,6 +14,8 @@ namespace SistemaIncidentes.Api.DTOs
 
         public bool Activo { get; set; }
 
+        public bool EmailConfirmado { get; set; }
+
         public DateTime FechaCreacion { get; set; }
     }
 }

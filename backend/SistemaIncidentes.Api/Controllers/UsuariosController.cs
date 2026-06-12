@@ -55,6 +55,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Telefono = u.Telefono,
                     Rol = u.Rol != null ? u.Rol.Nombre : "Sin rol",
                     Activo = u.Activo,
+                    EmailConfirmado = u.EmailConfirmado,
                     FechaCreacion = u.FechaCreacion
                 })
                 .FirstOrDefaultAsync();
@@ -122,6 +123,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Telefono = u.Telefono,
                     Rol = u.Rol != null ? u.Rol.Nombre : "Sin rol",
                     Activo = u.Activo,
+                    EmailConfirmado = u.EmailConfirmado,
                     FechaCreacion = u.FechaCreacion
                 })
                 .ToListAsync();
@@ -172,11 +174,13 @@ namespace SistemaIncidentes.Api.Controllers
                 return Forbid();
             }
 
+            string passwordTemporalInterna = GenerarTokenSeguro();
+
             var usuario = new Usuario
             {
                 NombreCompleto = dto.NombreCompleto.Trim(),
                 Correo = correoNormalizado,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(passwordTemporalInterna),
                 Telefono = string.IsNullOrWhiteSpace(dto.Telefono) ? null : dto.Telefono.Trim(),
                 RolId = rol.Id,
                 Activo = true,
@@ -202,13 +206,14 @@ namespace SistemaIncidentes.Api.Controllers
                     Telefono = u.Telefono,
                     Rol = u.Rol != null ? u.Rol.Nombre : "Sin rol",
                     Activo = u.Activo,
+                    EmailConfirmado = u.EmailConfirmado,
                     FechaCreacion = u.FechaCreacion
                 })
                 .FirstAsync();
 
             return CreatedAtAction(nameof(ObtenerPerfil), new { id = usuario.Id }, new
             {
-                mensaje = "Usuario creado correctamente. Se envió un correo de confirmación.",
+                mensaje = "Usuario creado correctamente. Se envió un correo de activación para que el usuario configure su contraseña.",
                 usuario = usuarioCreado
             });
         }
@@ -286,6 +291,7 @@ namespace SistemaIncidentes.Api.Controllers
                     Telefono = u.Telefono,
                     Rol = u.Rol != null ? u.Rol.Nombre : "Sin rol",
                     Activo = u.Activo,
+                    EmailConfirmado = u.EmailConfirmado,
                     FechaCreacion = u.FechaCreacion
                 })
                 .FirstAsync();
@@ -364,7 +370,8 @@ namespace SistemaIncidentes.Api.Controllers
                     usuario.NombreCompleto,
                     usuario.Correo,
                     Rol = usuario.Rol != null ? usuario.Rol.Nombre : "Sin rol",
-                    usuario.Activo
+                    usuario.Activo,
+                    usuario.EmailConfirmado
                 }
             });
         }
@@ -470,7 +477,8 @@ namespace SistemaIncidentes.Api.Controllers
                     usuario.NombreCompleto,
                     usuario.Correo,
                     Rol = usuario.Rol.Nombre,
-                    usuario.Activo
+                    usuario.Activo,
+                    usuario.EmailConfirmado
                 }
             });
         }
@@ -490,22 +498,56 @@ namespace SistemaIncidentes.Api.Controllers
 
         private async Task EnviarCorreoConfirmacionAsync(Usuario usuario)
         {
-            var apiBaseUrl = _configuration["AppSettings:ApiBaseUrl"] ?? "http://localhost:5014";
-            var enlaceConfirmacion = $"{apiBaseUrl}/api/Auth/confirmar-email?token={Uri.EscapeDataString(usuario.TokenConfirmacionEmail ?? string.Empty)}";
+            var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
+
+            var enlaceActivacion = $"{frontendUrl}/activar-cuenta?token={Uri.EscapeDataString(usuario.TokenConfirmacionEmail ?? string.Empty)}";
 
             var contenido = $@"
-                <h2>Confirmación de correo electrónico</h2>
-                <p>Hola {usuario.NombreCompleto},</p>
-                <p>Se ha creado una cuenta para usted en el Sistema de Gestión de Incidentes Tecnológicos UTO.</p>
-                <p>Para activar su acceso, confirme su correo electrónico desde el siguiente enlace:</p>
-                <p><a href=""{enlaceConfirmacion}"">Confirmar correo electrónico</a></p>
-                <p>Este enlace vencerá en 24 horas.</p>
-                <p>Si usted no reconoce esta acción, puede ignorar este mensaje.</p>
+                <div style=""font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 24px;"">
+                    <div style=""max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb;"">
+                        
+                        <div style=""background-color: #0f172a; padding: 20px 24px; color: #ffffff;"">
+                            <h2 style=""margin: 0; font-size: 20px;"">Sistema de Incidentes Tecnológicos UTO</h2>
+                            <p style=""margin: 6px 0 0; font-size: 14px; color: #cbd5e1;"">
+                                Activación de cuenta
+                            </p>
+                        </div>
+
+                        <div style=""padding: 24px; color: #334155;"">
+                            <p style=""font-size: 15px;"">Hola <strong>{usuario.NombreCompleto}</strong>,</p>
+
+                            <p style=""font-size: 15px; line-height: 1.6;"">
+                                Se ha creado una cuenta para usted en el Sistema Web de Gestión de Incidentes Tecnológicos UTO.
+                            </p>
+
+                            <p style=""font-size: 15px; line-height: 1.6;"">
+                                Para activar su cuenta y crear su contraseña personal, presione el siguiente botón:
+                            </p>
+
+                            <div style=""text-align: center; margin: 28px 0;"">
+                                <a href=""{enlaceActivacion}""
+                                   style=""background-color: #2563eb; color: #ffffff; padding: 12px 22px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;"">
+                                    Activar cuenta
+                                </a>
+                            </div>
+
+                            <p style=""font-size: 14px; line-height: 1.6; color: #64748b;"">
+                                Este enlace vencerá en 24 horas. Si usted no reconoce esta acción, puede ignorar este mensaje.
+                            </p>
+                        </div>
+
+                        <div style=""background-color: #f8fafc; padding: 14px 24px; border-top: 1px solid #e5e7eb;"">
+                            <p style=""margin: 0; font-size: 12px; color: #64748b; text-align: center;"">
+                                UTO-01 · Gestión de Incidentes Tecnológicos
+                            </p>
+                        </div>
+                    </div>
+                </div>
             ";
 
             await _emailService.EnviarCorreoAsync(
                 usuario.Correo,
-                "Confirmación de correo - Sistema de Incidentes UTO",
+                "Activación de cuenta - Sistema de Incidentes UTO",
                 contenido
             );
         }
