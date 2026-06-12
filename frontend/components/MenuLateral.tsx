@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -69,6 +70,10 @@ export default function MenuLateral({
     logout();
     router.push("/login");
   }
+
+  const cambiarPasswordActivo =
+    pathname === "/cambiar-password" ||
+    pathname.startsWith("/cambiar-password/");
 
   return (
     <aside
@@ -153,7 +158,25 @@ export default function MenuLateral({
         })}
       </nav>
 
-      <div className="border-t border-slate-800 px-3 py-5">
+      <div className="space-y-2 border-t border-slate-800 px-3 py-5">
+        <Link
+          href="/cambiar-password"
+          title={contraido ? "Cambiar contraseña" : undefined}
+          className={`group relative flex w-full items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+            contraido ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+          } ${
+            cambiarPasswordActivo
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+          }`}
+        >
+          <KeyRound className="h-5 w-5 shrink-0" />
+
+          {!contraido && <span>Cambiar contraseña</span>}
+
+          {contraido && <Tooltip texto="Cambiar contraseña" />}
+        </Link>
+
         <button
           type="button"
           onClick={cerrarSesion}

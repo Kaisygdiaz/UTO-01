@@ -307,3 +307,4 @@ function obtenerBooleano(objeto: Record<string, unknown>, ...claves: string[]) {
 
   return false;
 }
+
