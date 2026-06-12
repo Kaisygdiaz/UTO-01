@@ -20,6 +20,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 // Servicio de comentarios de tickets
 builder.Services.AddScoped<ITicketComentarioService, TicketComentarioService>();
 builder.Services.AddScoped<ITicketDashboardService, TicketDashboardService>();
+builder.Services.AddScoped<ITicketWorkflowService, TicketWorkflowService>();
 
 builder.Services.Configure<SlaSettings>(builder.Configuration.GetSection("SlaSettings"));
 builder.Services.AddHostedService<SlaNotificationBackgroundService>();
