@@ -8,6 +8,7 @@ export interface TicketListado {
   solicitante: string;
   tecnicoAsignado: string;
   fechaCreacion: string;
+
   fechaLimiteSla: string | null;
   estaFueraSla: boolean;
   estaProximoAVencerSla: boolean;
@@ -16,18 +17,26 @@ export interface TicketListado {
 export interface TicketDetalle extends TicketListado {
   impacto: string;
   urgencia: string;
+
   solucion: string;
   comentarioCierre: string;
   calificacionSatisfaccion: number;
+
   motivoEscalamiento: string;
   fechaEscalamiento: string | null;
+
   motivoCancelacion: string;
   fechaCancelacion: string | null;
+
   motivoReapertura: string;
   fechaReapertura: string | null;
+
   fechaPrimeraRespuesta: string | null;
   fechaResolucion: string | null;
   fechaCierre: string | null;
+
+  tiempoRespuestaHoras: number;
+  tiempoResolucionHoras: number;
 }
 
 export interface BitacoraTicket {

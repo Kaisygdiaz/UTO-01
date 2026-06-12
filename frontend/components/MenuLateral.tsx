@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
   LayoutDashboard,
+  LogOut,
+  Settings,
+  ShieldCheck,
   Ticket,
   Users,
-  Settings,
-  ClipboardList,
-  LogOut,
-  ShieldCheck,
 } from "lucide-react";
-import { logout, getUsuario } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { getUsuario, logout } from "@/lib/auth";
 
 const opcionesBase = [
   {
@@ -47,7 +48,15 @@ const opcionesBase = [
   },
 ];
 
-export default function Sidebar() {
+interface MenuLateralProps {
+  contraido: boolean;
+  onToggle: () => void;
+}
+
+export default function MenuLateral({
+  contraido,
+  onToggle,
+}: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
   const usuario = getUsuario();
@@ -62,51 +71,112 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-72 bg-slate-950 text-white flex flex-col">
-      <div className="px-6 py-6 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
+    <aside
+      className={`fixed left-0 top-0 z-40 flex h-screen flex-col bg-slate-950 text-white shadow-xl transition-all duration-300 ease-in-out ${
+        contraido ? "w-20" : "w-72"
+      }`}
+    >
+      <div className="border-b border-slate-800 px-4 py-5">
+        <div
+          className={`flex items-center ${
+            contraido ? "justify-center" : "justify-between gap-3"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 shadow-md">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
 
-          <div>
-            <h1 className="font-bold leading-tight">UTO Incidentes</h1>
-            <p className="text-xs text-slate-400">Mesa de ayuda</p>
+            {!contraido && (
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold leading-tight">
+                  UTO Incidentes
+                </h1>
+                <p className="text-xs text-slate-400">Mesa de ayuda</p>
+              </div>
+            )}
           </div>
+        </div>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onToggle}
+            title={contraido ? "Expandir menú" : "Contraer menú"}
+            className={`group relative flex items-center rounded-xl border border-slate-800 bg-slate-900 text-sm font-medium text-slate-200 transition hover:border-slate-700 hover:bg-slate-800 hover:text-white ${
+              contraido
+                ? "mx-auto h-11 w-11 justify-center"
+                : "w-full justify-center gap-2 px-4 py-2.5"
+            }`}
+          >
+            {contraido ? (
+              <>
+                <ChevronRight className="h-5 w-5" />
+                <Tooltip texto="Expandir menú" />
+              </>
+            ) : (
+              <>
+                <ChevronLeft className="h-4 w-4" />
+                <span>Contraer menú</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-5 space-y-2">
+      <nav className="flex-1 space-y-2 px-3 py-5">
         {opciones.map((opcion) => {
           const Icono = opcion.icono;
-          const activo = pathname === opcion.href;
+          const activo =
+            pathname === opcion.href || pathname.startsWith(`${opcion.href}/`);
 
           return (
             <Link
               key={opcion.href}
               href={opcion.href}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
+              title={contraido ? opcion.nombre : undefined}
+              className={`group relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+                contraido ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+              } ${
                 activo
-                  ? "bg-blue-600 text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
-              <Icono className="h-5 w-5" />
-              {opcion.nombre}
+              <Icono className="h-5 w-5 shrink-0" />
+
+              {!contraido && <span>{opcion.nombre}</span>}
+
+              {contraido && <Tooltip texto={opcion.nombre} />}
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-4 py-5 border-t border-slate-800">
+      <div className="border-t border-slate-800 px-3 py-5">
         <button
+          type="button"
           onClick={cerrarSesion}
-          className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-300 hover:bg-red-600 hover:text-white transition"
+          title={contraido ? "Cerrar sesión" : undefined}
+          className={`group relative flex w-full items-center rounded-xl text-sm font-medium text-slate-300 transition-all duration-200 hover:bg-red-600 hover:text-white ${
+            contraido ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+          }`}
         >
-          <LogOut className="h-5 w-5" />
-          Cerrar sesión
+          <LogOut className="h-5 w-5 shrink-0" />
+
+          {!contraido && <span>Cerrar sesión</span>}
+
+          {contraido && <Tooltip texto="Cerrar sesión" />}
         </button>
       </div>
     </aside>
+  );
+}
+
+function Tooltip({ texto }: { texto: string }) {
+  return (
+    <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white opacity-0 shadow-lg ring-1 ring-slate-700 transition-opacity duration-200 group-hover:opacity-100">
+      {texto}
+    </span>
   );
 }

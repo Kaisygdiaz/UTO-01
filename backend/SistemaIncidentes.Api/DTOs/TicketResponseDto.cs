@@ -47,5 +47,15 @@ namespace SistemaIncidentes.Api.DTOs
         public DateTime? FechaResolucion { get; set; }
 
         public DateTime? FechaCierre { get; set; }
+
+        public int? TiempoRespuestaHoras { get; set; }
+
+        public int? TiempoResolucionHoras { get; set; }
+
+        public DateTime? FechaLimiteSla { get; set; }
+
+        public bool EstaFueraSla { get; set; }
+
+        public bool EstaProximoAVencerSla { get; set; }
     }
 }

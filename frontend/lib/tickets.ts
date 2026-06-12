@@ -7,7 +7,10 @@ import type {
   TicketListado,
 } from "@/types/tickets";
 
-function obtenerTexto(objeto: Record<string, unknown>, ...claves: string[]): string {
+function obtenerTexto(
+  objeto: Record<string, unknown>,
+  ...claves: string[]
+): string {
   for (const clave of claves) {
     const valor = objeto[clave];
 
@@ -34,7 +37,10 @@ function obtenerTextoVacio(
   return "";
 }
 
-function obtenerNumero(objeto: Record<string, unknown>, ...claves: string[]): number {
+function obtenerNumero(
+  objeto: Record<string, unknown>,
+  ...claves: string[]
+): number {
   for (const clave of claves) {
     const valor = objeto[clave];
 
@@ -84,19 +90,42 @@ function mapearTicket(item: Record<string, unknown>): TicketListado {
     estado: obtenerTexto(item, "Estado", "estado"),
     prioridad: obtenerTexto(item, "Prioridad", "prioridad"),
     categoria: obtenerTexto(item, "Categoria", "categoria"),
-    solicitante: obtenerTexto(item, "UsuarioSolicitante", "usuarioSolicitante"),
-    tecnicoAsignado: obtenerTexto(item, "TecnicoAsignado", "tecnicoAsignado"),
+    solicitante: obtenerTexto(
+      item,
+      "UsuarioSolicitante",
+      "usuarioSolicitante",
+      "Solicitante",
+      "solicitante"
+    ),
+    tecnicoAsignado: obtenerTexto(
+      item,
+      "TecnicoAsignado",
+      "tecnicoAsignado"
+    ),
     fechaCreacion: obtenerTexto(item, "FechaCreacion", "fechaCreacion"),
 
-    // Este dato no viene actualmente en GET /api/Tickets.
-    fechaLimiteSla: null,
+    fechaLimiteSla: obtenerFechaONull(
+      item,
+      "FechaLimiteSla",
+      "fechaLimiteSla",
+      "FechaLimiteSLA",
+      "fechaLimiteSLA"
+    ),
 
-    // Estos campos solo se usarán si el backend los envía.
-    estaFueraSla: obtenerBooleano(item, "EstaFueraSla", "estaFueraSla"),
+    estaFueraSla: obtenerBooleano(
+      item,
+      "EstaFueraSla",
+      "estaFueraSla",
+      "EstaFueraSLA",
+      "estaFueraSLA"
+    ),
+
     estaProximoAVencerSla: obtenerBooleano(
       item,
       "EstaProximoAVencerSla",
-      "estaProximoAVencerSla"
+      "estaProximoAVencerSla",
+      "EstaProximoAVencerSLA",
+      "estaProximoAVencerSLA"
     ),
   };
 }
@@ -109,57 +138,104 @@ function mapearTicketDetalle(item: Record<string, unknown>): TicketDetalle {
     impacto: obtenerTexto(item, "Impacto", "impacto"),
     urgencia: obtenerTexto(item, "Urgencia", "urgencia"),
     solucion: obtenerTextoVacio(item, "Solucion", "solucion"),
+
     comentarioCierre: obtenerTextoVacio(
       item,
       "ComentarioCierre",
       "comentarioCierre"
     ),
+
     calificacionSatisfaccion: obtenerNumero(
       item,
       "CalificacionSatisfaccion",
       "calificacionSatisfaccion"
     ),
+
     motivoEscalamiento: obtenerTextoVacio(
       item,
       "MotivoEscalamiento",
       "motivoEscalamiento"
     ),
+
     fechaEscalamiento: obtenerFechaONull(
       item,
       "FechaEscalamiento",
       "fechaEscalamiento"
     ),
+
     motivoCancelacion: obtenerTextoVacio(
       item,
       "MotivoCancelacion",
       "motivoCancelacion"
     ),
+
     fechaCancelacion: obtenerFechaONull(
       item,
       "FechaCancelacion",
       "fechaCancelacion"
     ),
+
     motivoReapertura: obtenerTextoVacio(
       item,
       "MotivoReapertura",
       "motivoReapertura"
     ),
+
     fechaReapertura: obtenerFechaONull(
       item,
       "FechaReapertura",
       "fechaReapertura"
     ),
+
     fechaPrimeraRespuesta: obtenerFechaONull(
       item,
       "FechaPrimeraRespuesta",
       "fechaPrimeraRespuesta"
     ),
+
     fechaResolucion: obtenerFechaONull(
       item,
       "FechaResolucion",
       "fechaResolucion"
     ),
+
     fechaCierre: obtenerFechaONull(item, "FechaCierre", "fechaCierre"),
+
+    tiempoRespuestaHoras: obtenerNumero(
+      item,
+      "TiempoRespuestaHoras",
+      "tiempoRespuestaHoras"
+    ),
+
+    tiempoResolucionHoras: obtenerNumero(
+      item,
+      "TiempoResolucionHoras",
+      "tiempoResolucionHoras"
+    ),
+
+    fechaLimiteSla: obtenerFechaONull(
+      item,
+      "FechaLimiteSla",
+      "fechaLimiteSla",
+      "FechaLimiteSLA",
+      "fechaLimiteSLA"
+    ),
+
+    estaFueraSla: obtenerBooleano(
+      item,
+      "EstaFueraSla",
+      "estaFueraSla",
+      "EstaFueraSLA",
+      "estaFueraSLA"
+    ),
+
+    estaProximoAVencerSla: obtenerBooleano(
+      item,
+      "EstaProximoAVencerSla",
+      "estaProximoAVencerSla",
+      "EstaProximoAVencerSLA",
+      "estaProximoAVencerSLA"
+    ),
   };
 }
 
@@ -254,6 +330,14 @@ export async function obtenerComentariosTicket(
     );
   }
 
+  const data = response.data as Record<string, unknown>;
+
+  if (Array.isArray(data.comentarios)) {
+    return data.comentarios.map((item) =>
+      mapearComentario(item as Record<string, unknown>)
+    );
+  }
+
   return [];
 }
 
@@ -297,7 +381,13 @@ export async function crearComentarioTicket(
     datos
   );
 
-  return mapearComentario(response.data);
+  const data = response.data;
+
+  if (data.comentario && typeof data.comentario === "object") {
+    return mapearComentario(data.comentario as Record<string, unknown>);
+  }
+
+  return mapearComentario(data);
 }
 
 export interface SubirAdjuntoTicketRequest {
@@ -327,7 +417,13 @@ export async function subirAdjuntoTicket(
     }
   );
 
-  return mapearAdjunto(response.data);
+  const data = response.data;
+
+  if (data.adjunto && typeof data.adjunto === "object") {
+    return mapearAdjunto(data.adjunto as Record<string, unknown>);
+  }
+
+  return mapearAdjunto(data);
 }
 
 export interface AsignarTicketRequest {

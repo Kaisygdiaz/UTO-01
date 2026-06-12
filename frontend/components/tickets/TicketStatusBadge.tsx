@@ -7,7 +7,7 @@ interface TicketStatusBadgeProps {
 export default function TicketStatusBadge({ estado }: TicketStatusBadgeProps) {
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${obtenerEstiloEstado(
+      className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-bold leading-none ${obtenerEstiloEstado(
         estado
       )}`}
     >
