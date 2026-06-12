@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -8,6 +9,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import TicketDetailWorkspace from "@/components/tickets/detail/TicketDetailWorkspace";
 import TicketPropertiesPanel from "@/components/tickets/detail/TicketPropertiesPanel";
 import { useTicketDetalle } from "@/hooks/useTicketDetalle";
+import type { TicketDetalle } from "@/types/tickets";
 import { ArrowLeft } from "lucide-react";
 
 export default function TicketDetallePage() {
@@ -20,6 +22,7 @@ export default function TicketDetallePage() {
     comentarios,
     adjuntos,
     tecnicos,
+
     cargando,
     guardandoComentario,
     subiendoAdjunto,
@@ -27,15 +30,16 @@ export default function TicketDetallePage() {
     cambiandoEstado,
     reclasificandoTicket,
     error,
+
     agregarComentario,
     subirAdjunto,
     asignarTecnico,
+    reclasificar,
     resolver,
     cerrar,
     reabrir,
     cancelar,
     escalar,
-    reclasificar,
   } = useTicketDetalle(id);
 
   return (
@@ -56,7 +60,7 @@ export default function TicketDetallePage() {
         {!cargando && !error && ticket && (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
             <TicketDetailWorkspace
-              ticket={ticket}
+              ticket={ticket as TicketDetalle}
               comentarios={comentarios}
               adjuntos={adjuntos}
               historial={bitacora}
@@ -77,7 +81,7 @@ export default function TicketDetallePage() {
 
             <div className="xl:sticky xl:top-24 xl:self-start">
               <TicketPropertiesPanel
-                ticket={ticket}
+                ticket={ticket as TicketDetalle}
                 reclasificando={reclasificandoTicket}
                 onReclasificar={reclasificar}
               />

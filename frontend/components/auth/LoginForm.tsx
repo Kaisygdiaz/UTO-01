@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 import { Eye, EyeOff } from "lucide-react";
-import { login } from "@/lib/auth";
+import { getUsuario, login } from "@/lib/auth";
 import Button from "@/components/ui/Button";
 import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
@@ -26,7 +26,9 @@ export default function LoginForm() {
 
     try {
       await login({ correo, password });
-      router.push("/dashboard");
+
+      const usuario = getUsuario();
+      router.push(obtenerRutaInicial(usuario?.rol));
     } catch (err) {
       const errorAxios = err as AxiosError<{ mensaje?: string }>;
 
@@ -98,4 +100,12 @@ export default function LoginForm() {
       </Button>
     </form>
   );
+}
+
+function obtenerRutaInicial(rol?: string) {
+  if (rol === "Administrador" || rol === "Jefe DTI") {
+    return "/dashboard";
+  }
+
+  return "/tickets";
 }

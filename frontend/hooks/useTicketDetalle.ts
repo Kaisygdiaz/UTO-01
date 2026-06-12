@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AxiosError } from "axios";
 import { obtenerTecnicos } from "@/lib/catalogos";
+import { getUsuario } from "@/lib/auth";
 import {
   asignarTicket,
   cancelarTicket,
@@ -24,6 +26,12 @@ import type {
   ComentarioTicket,
   TicketDetalle,
 } from "@/types/tickets";
+
+type ApiErrorResponse = {
+  mensaje?: string;
+  message?: string;
+  title?: string;
+};
 
 export function useTicketDetalle(id: number) {
   const [ticket, setTicket] = useState<TicketDetalle | null>(null);
@@ -52,37 +60,45 @@ export function useTicketDetalle(id: number) {
       setError("");
       setCargando(true);
 
-      const [
-        ticketData,
-        bitacoraData,
-        comentariosData,
-        adjuntosData,
-        tecnicosData,
-      ] = await Promise.all([
-        obtenerTicketPorId(id),
-        obtenerBitacoraTicket(id),
-        obtenerComentariosTicket(id),
-        obtenerAdjuntosTicket(id),
-        obtenerTecnicos(),
-      ]);
+      const usuario = getUsuario();
+      const puedeCargarTecnicos =
+        usuario?.rol === "Administrador" || usuario?.rol === "Jefe DTI";
+
+      const ticketData = await obtenerTicketPorId(id);
+
+      const [bitacoraData, comentariosData, adjuntosData, tecnicosData] =
+        await Promise.all([
+          resolverArregloSeguro(() => obtenerBitacoraTicket(id)),
+          resolverArregloSeguro(() => obtenerComentariosTicket(id)),
+          resolverArregloSeguro(() => obtenerAdjuntosTicket(id)),
+          puedeCargarTecnicos
+            ? resolverArregloSeguro(() => obtenerTecnicos())
+            : Promise.resolve([]),
+        ]);
 
       setTicket(ticketData);
       setBitacora(bitacoraData);
       setComentarios(comentariosData);
       setAdjuntos(adjuntosData);
       setTecnicos(tecnicosData);
-    } catch {
-      setError("No fue posible cargar el detalle del ticket.");
+    } catch (err) {
+      setTicket(null);
+      setError(
+        obtenerMensajeError(
+          err,
+          "No fue posible cargar el detalle del ticket."
+        )
+      );
     } finally {
       setCargando(false);
     }
   }, [id]);
 
   const refrescarTicketEHistorial = useCallback(async () => {
-    const [ticketData, bitacoraData] = await Promise.all([
-      obtenerTicketPorId(id),
-      obtenerBitacoraTicket(id),
-    ]);
+    const ticketData = await obtenerTicketPorId(id);
+    const bitacoraData = await resolverArregloSeguro(() =>
+      obtenerBitacoraTicket(id)
+    );
 
     setTicket(ticketData);
     setBitacora(bitacoraData);
@@ -90,8 +106,8 @@ export function useTicketDetalle(id: number) {
 
   const refrescarComentariosEHistorial = useCallback(async () => {
     const [comentariosData, bitacoraData] = await Promise.all([
-      obtenerComentariosTicket(id),
-      obtenerBitacoraTicket(id),
+      resolverArregloSeguro(() => obtenerComentariosTicket(id)),
+      resolverArregloSeguro(() => obtenerBitacoraTicket(id)),
     ]);
 
     setComentarios(comentariosData);
@@ -100,8 +116,8 @@ export function useTicketDetalle(id: number) {
 
   const refrescarAdjuntosEHistorial = useCallback(async () => {
     const [adjuntosData, bitacoraData] = await Promise.all([
-      obtenerAdjuntosTicket(id),
-      obtenerBitacoraTicket(id),
+      resolverArregloSeguro(() => obtenerAdjuntosTicket(id)),
+      resolverArregloSeguro(() => obtenerBitacoraTicket(id)),
     ]);
 
     setAdjuntos(adjuntosData);
@@ -153,6 +169,26 @@ export function useTicketDetalle(id: number) {
       await refrescarTicketEHistorial();
     } finally {
       setAsignandoTicket(false);
+    }
+  }
+
+  async function reclasificar(
+    impacto: string,
+    urgencia: string,
+    motivoReclasificacion: string
+  ) {
+    try {
+      setReclasificandoTicket(true);
+
+      await reclasificarTicket(id, {
+        impacto,
+        urgencia,
+        motivoReclasificacion,
+      });
+
+      await refrescarTicketEHistorial();
+    } finally {
+      setReclasificandoTicket(false);
     }
   }
 
@@ -230,26 +266,6 @@ export function useTicketDetalle(id: number) {
     }
   }
 
-  async function reclasificar(
-    impacto: string,
-    urgencia: string,
-    motivoReclasificacion: string
-  ) {
-    try {
-      setReclasificandoTicket(true);
-
-      await reclasificarTicket(id, {
-        impacto,
-        urgencia,
-        motivoReclasificacion,
-      });
-
-      await refrescarTicketEHistorial();
-    } finally {
-      setReclasificandoTicket(false);
-    }
-  }
-
   useEffect(() => {
     cargarDetalle();
   }, [cargarDetalle]);
@@ -260,6 +276,7 @@ export function useTicketDetalle(id: number) {
     comentarios,
     adjuntos,
     tecnicos,
+
     cargando,
     guardandoComentario,
     subiendoAdjunto,
@@ -267,15 +284,41 @@ export function useTicketDetalle(id: number) {
     cambiandoEstado,
     reclasificandoTicket,
     error,
+
     agregarComentario,
     subirAdjunto,
     asignarTecnico,
+    reclasificar,
     resolver,
     cerrar,
     reabrir,
     cancelar,
     escalar,
-    reclasificar,
     recargarDetalle: cargarDetalle,
   };
+}
+
+async function resolverArregloSeguro<T>(
+  callback: () => Promise<T[]>
+): Promise<T[]> {
+  try {
+    return await callback();
+  } catch {
+    return [];
+  }
+}
+
+function obtenerMensajeError(error: unknown, mensajePorDefecto: string) {
+  const axiosError = error as AxiosError<ApiErrorResponse>;
+  const data = axiosError.response?.data;
+
+  if (axiosError.response?.status === 403) {
+    return "No tiene permisos para consultar este ticket.";
+  }
+
+  if (axiosError.response?.status === 404) {
+    return "El ticket solicitado no fue encontrado.";
+  }
+
+  return data?.mensaje || data?.message || data?.title || mensajePorDefecto;
 }

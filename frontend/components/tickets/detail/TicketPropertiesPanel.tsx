@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import Card from "@/components/ui/Card";
-import TicketReclasificarModal from "@/components/tickets/detail/TicketReclasificarModal";
+import TicketReclasificarModal from "./TicketReclasificarModal";
+import { getUsuario } from "@/lib/auth";
 import { formatearFecha } from "@/utils/dates";
 import {
   obtenerEstiloTextoEstado,
@@ -18,7 +19,7 @@ import {
   Clock,
   Folder,
   Gauge,
-  PencilLine,
+  Pencil,
   ShieldCheck,
   Timer,
   User,
@@ -26,10 +27,27 @@ import {
   Zap,
 } from "lucide-react";
 
+type TicketPanelData = Partial<TicketDetalle> & {
+  estado?: string;
+  prioridad?: string;
+  categoria?: string;
+  solicitante?: string;
+  tecnicoAsignado?: string | null;
+  impacto?: string;
+  urgencia?: string;
+  fechaLimiteSla?: string | null;
+  fechaCreacion?: string | null;
+  fechaPrimeraRespuesta?: string | null;
+  fechaResolucion?: string | null;
+  fechaCierre?: string | null;
+  estaFueraSla?: boolean;
+  estaProximoAVencerSla?: boolean;
+};
+
 interface TicketPropertiesPanelProps {
-  ticket: TicketDetalle;
-  reclasificando: boolean;
-  onReclasificar: (
+  ticket: TicketPanelData;
+  reclasificando?: boolean;
+  onReclasificar?: (
     impacto: string,
     urgencia: string,
     motivoReclasificacion: string
@@ -38,15 +56,42 @@ interface TicketPropertiesPanelProps {
 
 export default function TicketPropertiesPanel({
   ticket,
-  reclasificando,
+  reclasificando = false,
   onReclasificar,
 }: TicketPropertiesPanelProps) {
-  const sla = obtenerEstadoSla(ticket);
+  const usuario = getUsuario();
+  const rol = usuario?.rol ?? "";
+
   const [modalReclasificarAbierto, setModalReclasificarAbierto] =
     useState(false);
 
-  const ticketBloqueado =
-    ticket.estado === "Cerrado" || ticket.estado === "Cancelado";
+  const sla = obtenerEstadoSla(ticket);
+
+  const esAdministrativo = rol === "Administrador" || rol === "Jefe DTI";
+
+  const esTecnicoAsignado =
+    rol === "Técnico" &&
+    normalizar(ticket.tecnicoAsignado) === normalizar(usuario?.nombreCompleto);
+
+  const puedeReclasificar =
+    !!onReclasificar &&
+    (esAdministrativo || esTecnicoAsignado) &&
+    !esEstadoFinal(ticket.estado);
+
+  const puedeVerSla = rol !== "Solicitante";
+
+  async function manejarReclasificar(
+    impacto: string,
+    urgencia: string,
+    motivoReclasificacion: string
+  ) {
+    if (!onReclasificar) {
+      return;
+    }
+
+    await onReclasificar(impacto, urgencia, motivoReclasificacion);
+    setModalReclasificarAbierto(false);
+  }
 
   return (
     <div className="space-y-4">
@@ -61,8 +106,7 @@ export default function TicketPropertiesPanel({
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Información operativa para seguimiento, asignación y control del
-            incidente.
+            Información operativa para seguimiento y control del incidente.
           </p>
         </div>
 
@@ -70,13 +114,13 @@ export default function TicketPropertiesPanel({
           <MiniStatus
             label="Estado"
             value={ticket.estado}
-            valueClassName={obtenerEstiloTextoEstado(ticket.estado)}
+            valueClassName={obtenerEstiloTextoEstado(ticket.estado ?? "")}
           />
 
           <MiniStatus
             label="Prioridad"
             value={ticket.prioridad}
-            valueClassName={obtenerEstiloTextoPrioridad(ticket.prioridad)}
+            valueClassName={obtenerEstiloTextoPrioridad(ticket.prioridad ?? "")}
           />
         </div>
 
@@ -107,80 +151,70 @@ export default function TicketPropertiesPanel({
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-200 bg-white px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Clasificación
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Datos usados para calcular la prioridad del ticket.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setModalReclasificarAbierto(true)}
-              disabled={ticketBloqueado || reclasificando}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              <PencilLine className="h-3.5 w-3.5" />
-              Reclasificar
-            </button>
-          </div>
-
-          {ticketBloqueado && (
-            <p className="mt-2 text-xs font-semibold text-slate-500">
-              No se puede reclasificar un ticket cerrado o cancelado.
-            </p>
-          )}
-        </div>
+        <SectionHeader
+          titulo="Clasificación"
+          descripcion="Datos usados para calcular la prioridad del ticket."
+          actionSlot={
+            puedeReclasificar ? (
+              <button
+                type="button"
+                onClick={() => setModalReclasificarAbierto(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Reclasificar
+              </button>
+            ) : null
+          }
+        />
 
         <div className="divide-y divide-slate-100">
           <PropertyItem
             icono={<Zap />}
             label="Impacto"
             value={ticket.impacto}
-            valueClassName={obtenerEstiloTextoImpacto(ticket.impacto)}
+            valueClassName={obtenerEstiloTextoImpacto(ticket.impacto ?? "")}
           />
 
           <PropertyItem
             icono={<Clock />}
             label="Urgencia"
             value={ticket.urgencia}
-            valueClassName={obtenerEstiloTextoUrgencia(ticket.urgencia)}
+            valueClassName={obtenerEstiloTextoUrgencia(ticket.urgencia ?? "")}
           />
 
           <PropertyItem
             icono={<Gauge />}
             label="Prioridad calculada"
             value={ticket.prioridad}
-            valueClassName={obtenerEstiloTextoPrioridad(ticket.prioridad)}
+            valueClassName={obtenerEstiloTextoPrioridad(ticket.prioridad ?? "")}
           />
         </div>
       </Card>
 
-      <Card className="overflow-hidden">
-        <SectionHeader
-          titulo="SLA"
-          descripcion="Control de cumplimiento del tiempo de atención."
-        />
-
-        <div className="divide-y divide-slate-100">
-          <PropertyItem
-            icono={sla.icono}
-            label="Estado SLA"
-            value={sla.texto}
-            valueClassName={sla.textClassName}
+      {puedeVerSla && (
+        <Card className="overflow-hidden">
+          <SectionHeader
+            titulo="SLA"
+            descripcion="Control interno de cumplimiento del tiempo de atención."
           />
 
-          <PropertyItem
-            icono={<Timer />}
-            label="Fecha límite"
-            value={formatearFecha(ticket.fechaLimiteSla)}
-          />
-        </div>
-      </Card>
+          <div className="divide-y divide-slate-100">
+            <PropertyItem
+              icono={sla.icono}
+              label="Estado SLA"
+              value={sla.texto}
+              valueClassName={sla.textClassName}
+            />
+
+            <PropertyItem
+              icono={<Timer />}
+              label="Fecha límite"
+              value={formatearFecha(ticket.fechaLimiteSla ?? null)}
+            />
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <SectionHeader
@@ -192,37 +226,39 @@ export default function TicketPropertiesPanel({
           <PropertyItem
             icono={<Calendar />}
             label="Creación"
-            value={formatearFecha(ticket.fechaCreacion)}
+            value={formatearFecha(ticket.fechaCreacion ?? null)}
           />
 
           <PropertyItem
             icono={<Calendar />}
             label="Primera respuesta"
-            value={formatearFecha(ticket.fechaPrimeraRespuesta)}
+            value={formatearFecha(ticket.fechaPrimeraRespuesta ?? null)}
           />
 
           <PropertyItem
             icono={<Calendar />}
             label="Resolución"
-            value={formatearFecha(ticket.fechaResolucion)}
+            value={formatearFecha(ticket.fechaResolucion ?? null)}
           />
 
           <PropertyItem
             icono={<Calendar />}
             label="Cierre"
-            value={formatearFecha(ticket.fechaCierre)}
+            value={formatearFecha(ticket.fechaCierre ?? null)}
           />
         </div>
       </Card>
 
-      <TicketReclasificarModal
-        abierto={modalReclasificarAbierto}
-        impactoActual={ticket.impacto}
-        urgenciaActual={ticket.urgencia}
-        procesando={reclasificando}
-        onCerrar={() => setModalReclasificarAbierto(false)}
-        onReclasificar={onReclasificar}
-      />
+      {puedeReclasificar && (
+        <TicketReclasificarModal
+          abierto={modalReclasificarAbierto}
+          impactoActual={ticket.impacto ?? "Medio"}
+          urgenciaActual={ticket.urgencia ?? "Media"}
+          procesando={reclasificando}
+          onCerrar={() => setModalReclasificarAbierto(false)}
+          onReclasificar={manejarReclasificar}
+        />
+      )}
     </div>
   );
 }
@@ -230,20 +266,30 @@ export default function TicketPropertiesPanel({
 interface SectionHeaderProps {
   titulo: string;
   descripcion: string;
+  actionSlot?: ReactNode;
 }
 
-function SectionHeader({ titulo, descripcion }: SectionHeaderProps) {
+function SectionHeader({
+  titulo,
+  descripcion,
+  actionSlot,
+}: SectionHeaderProps) {
   return (
-    <div className="border-b border-slate-200 bg-white px-5 py-4">
-      <h3 className="text-sm font-bold text-slate-900">{titulo}</h3>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{descripcion}</p>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+      <div>
+        <h3 className="text-sm font-bold text-slate-900">{titulo}</h3>
+
+        <p className="mt-1 text-xs leading-5 text-slate-500">{descripcion}</p>
+      </div>
+
+      {actionSlot}
     </div>
   );
 }
 
 interface MiniStatusProps {
   label: string;
-  value: string;
+  value?: string | null;
   valueClassName?: string;
 }
 
@@ -268,7 +314,7 @@ function MiniStatus({
 interface PropertyItemProps {
   icono: ReactNode;
   label: string;
-  value: string | null;
+  value?: string | null;
   valueClassName?: string;
 }
 
@@ -297,7 +343,7 @@ function PropertyItem({
   );
 }
 
-function obtenerEstadoSla(ticket: TicketDetalle) {
+function obtenerEstadoSla(ticket: TicketPanelData) {
   if (!ticket.fechaLimiteSla) {
     return {
       texto: "No definido",
@@ -329,14 +375,32 @@ function obtenerEstadoSla(ticket: TicketDetalle) {
   };
 }
 
-function tieneValor(value: string | null) {
+function tieneValor(value?: string | null) {
   return !!value && value.trim() !== "" && value !== "No definido";
 }
 
-function mostrarValor(value: string | null) {
+function mostrarValor(value?: string | null) {
   if (!tieneValor(value)) {
     return "No definido";
   }
 
-  return value;
+  return value ?? "No definido";
 }
+
+function esEstadoFinal(estado?: string | null) {
+  const estadoNormalizado = normalizar(estado);
+
+  return (
+    estadoNormalizado.includes("cerrado") ||
+    estadoNormalizado.includes("cancelado")
+  );
+}
+
+function normalizar(valor?: string | null) {
+  return (valor ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+

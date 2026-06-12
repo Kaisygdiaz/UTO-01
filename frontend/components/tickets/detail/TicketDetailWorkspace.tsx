@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Card from "@/components/ui/Card";
 import TicketPriorityBadge from "@/components/tickets/TicketPriorityBadge";
 import TicketStatusBadge from "@/components/tickets/TicketStatusBadge";
 import TicketAsignarModal from "./TicketAsignarModal";
 import TicketEstadoModal from "./TicketEstadoModal";
+import { getUsuario } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { obtenerUrlDescargaAdjunto } from "@/lib/tickets";
 import { formatearFecha } from "@/utils/dates";
 import {
   obtenerEstiloEstado,
@@ -20,8 +23,6 @@ import type {
   ComentarioTicket,
   TicketDetalle,
 } from "@/types/tickets";
-import { api } from "@/lib/api";
-import { obtenerUrlDescargaAdjunto } from "@/lib/tickets";
 import {
   Clock,
   Download,
@@ -30,6 +31,7 @@ import {
   MessageSquare,
   Paperclip,
   Send,
+  XCircle,
 } from "lucide-react";
 
 interface TicketDetailWorkspaceProps {
@@ -76,14 +78,45 @@ export default function TicketDetailWorkspace({
   onCancelar,
   onEscalar,
 }: TicketDetailWorkspaceProps) {
+  const usuario = getUsuario();
+  const rol = usuario?.rol ?? "";
+
+  const esAdministrativo = rol === "Administrador" || rol === "Jefe DTI";
+  const esSolicitante = rol === "Solicitante";
+  const esTecnico = rol === "Técnico";
+
+  const esTecnicoAsignado =
+    esTecnico &&
+    normalizar(ticket.tecnicoAsignado) === normalizar(usuario?.nombreCompleto);
+
+  const puedeAsignarResponsable = esAdministrativo;
+  const puedeComentarioInterno = esAdministrativo || esTecnico;
+  const puedeVerHistorial = !esSolicitante;
+  const puedeCambiarEstado =
+    esAdministrativo || esTecnicoAsignado || esSolicitante;
+
   const [tabActiva, setTabActiva] = useState<TabActiva>("conversaciones");
   const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
   const [modalEstadoAbierto, setModalEstadoAbierto] = useState(false);
+  const [modalCancelacionAbierto, setModalCancelacionAbierto] = useState(false);
 
   const tieneTecnicoAsignado =
     !!ticket.tecnicoAsignado &&
     ticket.tecnicoAsignado.trim() !== "" &&
     ticket.tecnicoAsignado !== "No definido";
+
+  const comentariosVisibles = puedeComentarioInterno
+    ? comentarios
+    : comentarios.filter((comentario) => !comentario.esInterno);
+
+  function abrirAccionEstado() {
+    if (esSolicitante) {
+      setModalCancelacionAbierto(true);
+      return;
+    }
+
+    setModalEstadoAbierto(true);
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -109,25 +142,33 @@ export default function TicketDetailWorkspace({
 
             <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
               <span>Solicitante: {ticket.solicitante}</span>
-              <span>Técnico: {ticket.tecnicoAsignado}</span>
+              <span>Técnico: {mostrarValor(ticket.tecnicoAsignado)}</span>
               <span>Creado: {formatearFecha(ticket.fechaCreacion)}</span>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setModalAsignarAbierto(true)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              {tieneTecnicoAsignado ? "Reasignar" : "Asignar"}
-            </button>
+            {puedeAsignarResponsable && (
+              <button
+                onClick={() => setModalAsignarAbierto(true)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {tieneTecnicoAsignado ? "Reasignar" : "Asignar"}
+              </button>
+            )}
 
-            <button
-              onClick={() => setModalEstadoAbierto(true)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Cambiar estado
-            </button>
+            {puedeCambiarEstado && !esEstadoFinal(ticket.estado) && (
+              <button
+                onClick={abrirAccionEstado}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  esSolicitante
+                    ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {esSolicitante ? "Cancelar ticket" : "Cambiar estado"}
+              </button>
+            )}
 
             <button
               onClick={() => setTabActiva("conversaciones")}
@@ -162,20 +203,23 @@ export default function TicketDetailWorkspace({
             Adjuntos
           </TabButton>
 
-          <TabButton
-            activa={tabActiva === "historial"}
-            onClick={() => setTabActiva("historial")}
-          >
-            Historial
-          </TabButton>
+          {puedeVerHistorial && (
+            <TabButton
+              activa={tabActiva === "historial"}
+              onClick={() => setTabActiva("historial")}
+            >
+              Historial
+            </TabButton>
+          )}
         </nav>
       </div>
 
       <div className="min-h-[420px] bg-white p-6">
         {tabActiva === "conversaciones" && (
           <ConversacionesPanel
-            comentarios={comentarios}
+            comentarios={comentariosVisibles}
             guardandoComentario={guardandoComentario}
+            puedeComentarioInterno={puedeComentarioInterno}
             onAgregarComentario={onAgregarComentario}
           />
         )}
@@ -191,36 +235,51 @@ export default function TicketDetailWorkspace({
           />
         )}
 
-        {tabActiva === "historial" && <HistorialPanel historial={historial} />}
+        {tabActiva === "historial" && puedeVerHistorial && (
+          <HistorialPanel historial={historial} />
+        )}
       </div>
 
-      <TicketAsignarModal
-        abierto={modalAsignarAbierto}
-        tecnicos={tecnicos}
-        asignando={asignandoTicket}
-        esReasignacion={tieneTecnicoAsignado}
-        tecnicoActual={ticket.tecnicoAsignado}
-        onCerrar={() => setModalAsignarAbierto(false)}
-        onAsignar={onAsignarTecnico}
-      />
+      {puedeAsignarResponsable && (
+        <TicketAsignarModal
+          abierto={modalAsignarAbierto}
+          tecnicos={tecnicos}
+          asignando={asignandoTicket}
+          esReasignacion={tieneTecnicoAsignado}
+          tecnicoActual={ticket.tecnicoAsignado}
+          onCerrar={() => setModalAsignarAbierto(false)}
+          onAsignar={onAsignarTecnico}
+        />
+      )}
 
-      <TicketEstadoModal
-        abierto={modalEstadoAbierto}
-        estadoActual={ticket.estado}
-        procesando={cambiandoEstado}
-        onCerrar={() => setModalEstadoAbierto(false)}
-        onResolver={onResolver}
-        onCerrarTicket={onCerrarTicket}
-        onReabrir={onReabrir}
-        onCancelar={onCancelar}
-        onEscalar={onEscalar}
-      />
+      {!esSolicitante && (
+        <TicketEstadoModal
+          abierto={modalEstadoAbierto}
+          estadoActual={ticket.estado}
+          procesando={cambiandoEstado}
+          onCerrar={() => setModalEstadoAbierto(false)}
+          onResolver={onResolver}
+          onCerrarTicket={onCerrarTicket}
+          onReabrir={onReabrir}
+          onCancelar={onCancelar}
+          onEscalar={onEscalar}
+        />
+      )}
+
+      {esSolicitante && (
+        <CancelarTicketModal
+          abierto={modalCancelacionAbierto}
+          procesando={cambiandoEstado}
+          onCerrar={() => setModalCancelacionAbierto(false)}
+          onCancelar={onCancelar}
+        />
+      )}
     </Card>
   );
 }
 
 interface TabButtonProps {
-  children: React.ReactNode;
+  children: ReactNode;
   activa: boolean;
   onClick: () => void;
 }
@@ -243,10 +302,12 @@ function TabButton({ children, activa, onClick }: TabButtonProps) {
 function ConversacionesPanel({
   comentarios,
   guardandoComentario,
+  puedeComentarioInterno,
   onAgregarComentario,
 }: {
   comentarios: ComentarioTicket[];
   guardandoComentario: boolean;
+  puedeComentarioInterno: boolean;
   onAgregarComentario: (comentario: string, esInterno: boolean) => Promise<void>;
 }) {
   const [comentario, setComentario] = useState("");
@@ -262,7 +323,10 @@ function ConversacionesPanel({
         return;
       }
 
-      await onAgregarComentario(comentario, esInterno);
+      await onAgregarComentario(
+        comentario.trim(),
+        puedeComentarioInterno ? esInterno : false
+      );
 
       setComentario("");
       setEsInterno(false);
@@ -292,15 +356,21 @@ function ConversacionesPanel({
         />
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={esInterno}
-              onChange={(e) => setEsInterno(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600"
-            />
-            Comentario interno
-          </label>
+          {puedeComentarioInterno ? (
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={esInterno}
+                onChange={(e) => setEsInterno(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+              />
+              Comentario interno
+            </label>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Tu respuesta será visible dentro del seguimiento del ticket.
+            </p>
+          )}
 
           <button
             onClick={enviarComentario}
@@ -316,7 +386,7 @@ function ConversacionesPanel({
           <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
         )}
 
-        {esInterno && (
+        {puedeComentarioInterno && esInterno && (
           <p className="mt-3 rounded-lg bg-purple-50 px-3 py-2 text-xs text-purple-700">
             Este comentario será visible únicamente para personal autorizado.
           </p>
@@ -405,7 +475,10 @@ function DetallesPanel({ ticket }: { ticket: TicketDetalle }) {
         />
 
         <DetailItem label="Solicitante" value={ticket.solicitante} />
-        <DetailItem label="Técnico asignado" value={ticket.tecnicoAsignado} />
+        <DetailItem
+          label="Técnico asignado"
+          value={mostrarValor(ticket.tecnicoAsignado)}
+        />
 
         <DetailItem
           label="Fecha de creación"
@@ -435,14 +508,16 @@ function DetallesPanel({ ticket }: { ticket: TicketDetalle }) {
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
+function DetailItem({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
         {label}
       </p>
 
-      <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">
+        {mostrarValor(value)}
+      </p>
     </div>
   );
 }
@@ -462,7 +537,7 @@ function ColoredDetailItem({
         {label}
       </p>
 
-      <p className="mt-1 text-sm font-bold">{value}</p>
+      <p className="mt-1 text-sm font-bold">{mostrarValor(value)}</p>
     </div>
   );
 }
@@ -676,4 +751,144 @@ function HistorialPanel({ historial }: { historial: BitacoraTicket[] }) {
       </div>
     </div>
   );
+}
+
+function CancelarTicketModal({
+  abierto,
+  procesando,
+  onCerrar,
+  onCancelar,
+}: {
+  abierto: boolean;
+  procesando: boolean;
+  onCerrar: () => void;
+  onCancelar: (motivoCancelacion: string) => Promise<void>;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState("");
+
+  if (!abierto) return null;
+
+  async function confirmarCancelacion() {
+    try {
+      setError("");
+
+      if (motivo.trim().length < 10) {
+        setError("Debe ingresar un motivo de cancelación de al menos 10 caracteres.");
+        return;
+      }
+
+      await onCancelar(motivo.trim());
+
+      setMotivo("");
+      onCerrar();
+    } catch {
+      setError("No fue posible cancelar el ticket.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Cancelar ticket
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Esta acción registrará la cancelación del ticket con una
+                justificación.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onCerrar}
+              className="text-slate-400 transition hover:text-slate-700"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {error}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+            <div className="flex gap-3">
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+              <p className="text-sm leading-6 text-red-700">
+                Al cancelar el ticket se detendrá su atención. El motivo quedará
+                registrado en el sistema.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-bold text-slate-700">
+              Motivo de cancelación
+            </label>
+
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={4}
+              placeholder="Explique por qué desea cancelar este ticket..."
+              className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={onCerrar}
+            disabled={procesando}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+          >
+            Volver
+          </button>
+
+          <button
+            type="button"
+            onClick={confirmarCancelacion}
+            disabled={procesando}
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+          >
+            {procesando ? "Cancelando..." : "Confirmar cancelación"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function mostrarValor(value: string | null) {
+  if (!value || value.trim() === "" || value === "No definido") {
+    return "No definido";
+  }
+
+  return value;
+}
+
+function esEstadoFinal(estado: string) {
+  const estadoNormalizado = normalizar(estado);
+
+  return (
+    estadoNormalizado.includes("cerrado") ||
+    estadoNormalizado.includes("cancelado")
+  );
+}
+
+function normalizar(valor?: string | null) {
+  return (valor ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
 }

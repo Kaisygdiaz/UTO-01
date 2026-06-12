@@ -16,36 +16,48 @@ import {
 } from "lucide-react";
 import { getUsuario, logout } from "@/lib/auth";
 
+const rolesAdministrativos = ["Administrador", "Jefe DTI"];
+const rolesTodos = ["Administrador", "Jefe DTI", "Técnico", "Solicitante"];
+
 const opcionesBase = [
   {
     nombre: "Dashboard",
     href: "/dashboard",
     icono: LayoutDashboard,
-    roles: ["Administrador", "Jefe DTI", "Técnico", "Solicitante"],
+    roles: rolesAdministrativos,
   },
   {
     nombre: "Tickets",
     href: "/tickets",
     icono: Ticket,
-    roles: ["Administrador", "Jefe DTI", "Técnico", "Solicitante"],
+    roles: rolesTodos,
   },
   {
     nombre: "Usuarios",
     href: "/usuarios",
     icono: Users,
-    roles: ["Administrador", "Jefe DTI"],
+    roles: rolesAdministrativos,
   },
   {
     nombre: "Catálogos",
     href: "/catalogos",
     icono: Settings,
-    roles: ["Administrador", "Jefe DTI"],
+    roles: rolesAdministrativos,
   },
   {
     nombre: "Reportes",
     href: "/reportes",
     icono: BarChart3,
-    roles: ["Administrador", "Jefe DTI"],
+    roles: rolesAdministrativos,
+  },
+];
+
+const opcionesCuenta = [
+  {
+    nombre: "Cambiar contraseña",
+    href: "/cambiar-password",
+    icono: KeyRound,
+    roles: rolesTodos,
   },
 ];
 
@@ -66,18 +78,21 @@ export default function MenuLateral({
     usuario ? opcion.roles.includes(usuario.rol) : false
   );
 
+  const opcionesUsuario = opcionesCuenta.filter((opcion) =>
+    usuario ? opcion.roles.includes(usuario.rol) : false
+  );
+
   function cerrarSesion() {
     logout();
     router.push("/login");
   }
 
-  const cambiarPasswordActivo =
-    pathname === "/cambiar-password" ||
-    pathname.startsWith("/cambiar-password/");
+  const inicialUsuario =
+    usuario?.nombreCompleto?.trim()?.charAt(0)?.toUpperCase() || "U";
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 flex h-screen flex-col bg-slate-950 text-white shadow-xl transition-all duration-300 ease-in-out ${
+      className={`fixed left-0 top-0 z-40 flex h-screen flex-col bg-slate-950 text-white shadow-xl transition-all duration-300 ease-in-out no-print ${
         contraido ? "w-20" : "w-72"
       }`}
     >
@@ -159,23 +174,47 @@ export default function MenuLateral({
       </nav>
 
       <div className="space-y-2 border-t border-slate-800 px-3 py-5">
-        <Link
-          href="/cambiar-password"
-          title={contraido ? "Cambiar contraseña" : undefined}
-          className={`group relative flex w-full items-center rounded-xl text-sm font-medium transition-all duration-200 ${
-            contraido ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
-          } ${
-            cambiarPasswordActivo
-              ? "bg-blue-600 text-white shadow-sm"
-              : "text-slate-300 hover:bg-slate-800 hover:text-white"
-          }`}
-        >
-          <KeyRound className="h-5 w-5 shrink-0" />
+        {opcionesUsuario.map((opcion) => {
+          const Icono = opcion.icono;
+          const activo =
+            pathname === opcion.href || pathname.startsWith(`${opcion.href}/`);
 
-          {!contraido && <span>Cambiar contraseña</span>}
+          return (
+            <Link
+              key={opcion.href}
+              href={opcion.href}
+              title={contraido ? opcion.nombre : undefined}
+              className={`group relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+                contraido ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+              } ${
+                activo
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              <Icono className="h-5 w-5 shrink-0" />
 
-          {contraido && <Tooltip texto="Cambiar contraseña" />}
-        </Link>
+              {!contraido && <span>{opcion.nombre}</span>}
+
+              {contraido && <Tooltip texto={opcion.nombre} />}
+            </Link>
+          );
+        })}
+
+        {!contraido && usuario && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+            <p className="truncate text-sm font-bold text-white">
+              {usuario.nombreCompleto}
+            </p>
+            <p className="truncate text-xs text-slate-400">{usuario.rol}</p>
+          </div>
+        )}
+
+        {contraido && usuario && (
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-sm font-bold text-slate-200">
+            {inicialUsuario}
+          </div>
+        )}
 
         <button
           type="button"
